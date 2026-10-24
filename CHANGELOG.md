@@ -101,6 +101,28 @@ By @sagudev in [#10307](https://github.com/gfx-rs/wgpu/pull/10307).
 
 By @sagudev in [#10307](https://github.com/gfx-rs/wgpu/pull/10307).
 
+#### `SurfaceConfiguration` has new field `scaling_mode`
+
+`scaling_mode` selects how a swapchain image is mapped onto the window when
+`SurfaceConfiguration::width` and `height` do not match its size, which happens while a window
+is being resized or when the window's client area and the configured extent disagree.
+
+`SurfaceScalingMode::Auto`, the default, prefers `Stretch`; the new
+`SurfaceCapabilities::scaling_modes` lists the modes a surface can apply, and may be empty on
+platforms that do not let wgpu control scaling.
+
+```diff
+ let config = wgpu::SurfaceConfiguration {
+     // ...
++    scaling_mode: wgpu::SurfaceScalingMode::Auto,
+ };
+```
+
+`wgpu_hal::SurfaceConfiguration` and `wgpu_hal::SurfaceCapabilities` gained the corresponding
+fields. This is a breaking change for out-of-tree `wgpu_hal` backends.
+
+By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
+
 ### Added/New Features
 
 #### General
@@ -279,6 +301,7 @@ By @sagudev in [#10307](https://github.com/gfx-rs/wgpu/pull/10307).
 - Don't use timeline semaphores on VeriSilicon's proprietary driver, as on NXP's i.MX 8 SoCs, which crashes in `vkQueueSubmit` with them. wgpu falls back to binary fences there. By @tronical in [#10535](https://github.com/gfx-rs/wgpu/pull/10535).
 - Recover from `VK_ERROR_FRAGMENTED_POOL` and `VK_ERROR_OUT_OF_POOL_MEMORY` when allocating descriptor sets by resetting or retiring the offending pool and retrying on the next available (or a freshly created) pool instead of panicking. By @beicause in [#10264](https://github.com/gfx-rs/wgpu/pull/10264).
 - Enable the `depthBiasClamp` device feature when it is supported. Pipelines with a non-zero `DepthBiasState::clamp` previously failed Vulkan validation. By @VoxelBoy in [#10566](https://github.com/gfx-rs/wgpu/pull/10566).
+- Restore stretching of a swapchain image whose size differs from the surface, which some drivers changed to preserving the aspect ratio instead (leaving black bars), without a way for applications to control it. wgpu now requests `VK_SURFACE_PRESENT_SCALING_STRETCH_BIT_EXT` by default, using `VK_EXT_swapchain_maintenance1` and `VK_EXT_surface_maintenance1`. Drivers without those extensions keep whatever behavior they already had. See `SurfaceConfiguration::scaling_mode` for the modes a surface supports. By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
 
 #### Metal
 
