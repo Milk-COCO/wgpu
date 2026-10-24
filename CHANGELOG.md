@@ -162,6 +162,10 @@ By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
 - Added `Utf16SourceLocation` which is analogue to `SourceLocation` but using UTF-16 code units. Added `Utf16SourceLocation::to_utf8` and `SourceLocation::to_utf16` to convert between them. By @sagudev in [#10294](https://github.com/gfx-rs/wgpu/pull/10294).
 - Add `as_core` and `from_core` methods on various wgpu resources. By @sagudev in [#10211](https://github.com/gfx-rs/wgpu/pull/10211).
 
+#### DX12
+
+- `SurfaceConfiguration::scaling_mode` can now select `DXGI_SCALING_NONE` (`SurfaceScalingMode::OneToOne`) for windowed presentation, so the window displays the swap chain image without resampling it. Previously the only option was `DXGI_SCALING_STRETCH`. By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
+
 #### Naga
 
 - Add `@builtin(hit_barycentrics)`, a `vec2<f32>` readable in `@any_hit` and `@closest_hit` ray tracing pipeline shaders, holding two of the barycentric coordinates of the hit point on the triangle (the third is `1.0 - x - y`). Currently only supported with the SPIR-V backend. By @JMS55 in [#10193](https://github.com/gfx-rs/wgpu/pull/10193).
