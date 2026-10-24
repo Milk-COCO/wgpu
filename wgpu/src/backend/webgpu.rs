@@ -4375,6 +4375,9 @@ impl dispatch::SurfaceInterface for WebSurface {
                 wgt::CompositeAlphaMode::Opaque,
                 wgt::CompositeAlphaMode::PreMultiplied,
             ],
+            // A canvas is scaled by CSS/the compositor, which WebGPU does not
+            // expose a way to control.
+            scaling_modes: Vec::new(),
             // Statically set to RENDER_ATTACHMENT for now. See https://gpuweb.github.io/gpuweb/#dom-gpucanvasconfiguration-usage
             usages: wgt::TextureUsages::RENDER_ATTACHMENT,
         }

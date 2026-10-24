@@ -376,6 +376,17 @@ impl super::Instance {
         // so that we don't have to conditionally use the functions provided by the 1.1 instance
         extensions.push(khr::get_physical_device_properties2::NAME);
 
+        // VK_KHR_get_surface_capabilities2
+        // Promoted to Vulkan 1.1, and required for the per-present-mode surface
+        // queries that `surface_capabilities` uses; the extension is only kept
+        // when the driver advertises it.
+        extensions.push(khr::get_surface_capabilities2::NAME);
+
+        // VK_EXT_surface_maintenance1
+        // Provides the present scaling capabilities of a surface.
+        extensions.push(super::SURFACE_MAINTENANCE1_NAME);
+        extensions.push(super::SURFACE_MAINTENANCE1_KHR_NAME);
+
         // Only keep available extensions.
         extensions.retain(|&ext| {
             if instance_extensions
@@ -455,6 +466,17 @@ impl super::Instance {
                 None
             };
 
+        let get_surface_capabilities = if extensions.contains(&khr::get_surface_capabilities2::NAME)
+        {
+            log::debug!("Enabling surface capabilities2");
+            Some(khr::get_surface_capabilities2::Instance::new(
+                &entry,
+                &raw_instance,
+            ))
+        } else {
+            None
+        };
+
         let drop_guard = crate::DropGuard::from_option(drop_callback);
 
         Ok(Self {
@@ -466,6 +488,7 @@ impl super::Instance {
                 memory_budget_thresholds,
                 debug_utils,
                 get_physical_device_properties,
+                get_surface_capabilities,
                 entry,
                 has_nv_optimus,
                 instance_api_version,

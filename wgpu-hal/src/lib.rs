@@ -2251,6 +2251,14 @@ pub struct SurfaceCapabilities {
     ///
     /// Must be at least one.
     pub composite_alpha_modes: Vec<wgt::CompositeAlphaMode>,
+
+    /// List of supported scaling modes, in preference order: the first element
+    /// is what `wgt::SurfaceScalingMode::Auto` resolves to.
+    ///
+    /// May be empty, which means this backend cannot control how a swapchain
+    /// image is mapped onto a surface of a different extent and will use the
+    /// platform default. `Auto` is never listed.
+    pub scaling_modes: Vec<wgt::SurfaceScalingMode>,
 }
 
 impl SurfaceCapabilities {
@@ -2800,6 +2808,13 @@ pub struct SurfaceConfiguration {
     pub present_mode: wgt::PresentMode,
     /// Alpha composition mode.
     pub composite_alpha_mode: wgt::CompositeAlphaMode,
+    /// How a swapchain image is mapped onto a surface of a different extent.
+    ///
+    /// `wgpu-core` resolves `Auto` to one of
+    /// `SurfaceCapabilities::scaling_modes` before configuring the surface, so
+    /// the only value a backend can receive that it did not advertise is
+    /// `Auto`, and only when `scaling_modes` is empty.
+    pub scaling_mode: wgt::SurfaceScalingMode,
     /// Format of the surface textures.
     pub format: wgt::TextureFormat,
     /// Color space in which the presentation engine interprets the surface

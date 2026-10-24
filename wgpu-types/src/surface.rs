@@ -139,6 +139,73 @@ pub enum CompositeAlphaMode {
     Inherit = 4,
 }
 
+/// How the presentation engine maps a swapchain image whose extent differs
+/// from the surface extent onto the surface.
+///
+/// Use this as part of a [`SurfaceConfiguration`] to control what happens when
+/// [`SurfaceConfiguration::width`] and [`SurfaceConfiguration::height`] do not
+/// match the size of the surface itself, which is common while a window is
+/// being resized or when the window's client area and the configured extent
+/// disagree.
+///
+/// The modes a surface can apply are listed in
+/// [`SurfaceCapabilities::scaling_modes`]; choosing a mode that is not listed
+/// is a validation error. That list may be empty, which means the platform
+/// cannot control scaling at all and whatever the compositor does applies.
+///
+/// # Historical behavior
+///
+/// Hardware-accelerated backends used to stretch unconditionally. Some Vulkan
+/// drivers started applying [`AspectRatio`](Self::AspectRatio) instead, which
+/// made the same application behave differently across drivers.
+/// [`Auto`](Self::Auto) resolves to a mode that restores the previous
+/// stretching behavior wherever the driver lets wgpu ask for it.
+#[repr(C)]
+#[derive(Debug, ConstDefault!, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum SurfaceScalingMode {
+    /// Chooses the first supported mode out of:
+    ///
+    /// 1. [`Stretch`](Self::Stretch)
+    /// 2. [`AspectRatio`](Self::AspectRatio)
+    /// 3. [`OneToOne`](Self::OneToOne)
+    ///
+    /// If the surface supports none of them (see
+    /// [`SurfaceCapabilities::scaling_modes`]), the platform default is used and
+    /// this value is left in place.
+    #[custom(default)]
+    Auto = 0,
+    /// The image is scaled to fill the surface, ignoring its aspect ratio.
+    ///
+    /// * **Also known as**: the historical behavior of D3D12, Metal and older
+    ///   Vulkan drivers.
+    /// * **Maps to**: `DXGI_SCALING_STRETCH`, [`VK_SURFACE_PRESENT_SCALING_STRETCH_BIT_EXT`],
+    ///   `kCAGravityResize`.
+    ///
+    /// [`VK_SURFACE_PRESENT_SCALING_STRETCH_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
+    Stretch = 1,
+    /// The image is scaled to fit the surface while preserving its aspect
+    /// ratio, leaving unused areas of the surface uncovered ("letterbox" or
+    /// "pillarbox").
+    ///
+    /// * **Maps to**: `DXGI_SCALING_ASPECT_RATIO_STRETCH`,
+    ///   [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`],
+    ///   `kCAGravityResizeAspect`.
+    ///
+    /// [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
+    AspectRatio = 2,
+    /// The image is neither scaled nor resampled: one image pixel covers
+    /// exactly one surface pixel.
+    ///
+    /// * **Maps to**: `DXGI_SCALING_NONE`, [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`].
+    /// * **Not supported on**: Metal, GLES and the web, so it may be absent from
+    ///   [`SurfaceCapabilities::scaling_modes`].
+    ///
+    /// [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
+    OneToOne = 3,
+}
+
 /// The color space in which the presentation engine interprets the values
 /// written to a surface texture.
 ///
@@ -529,6 +596,23 @@ pub struct SurfaceCapabilities {
     ///
     /// Will return at least one element, [`CompositeAlphaMode::Opaque`] or [`CompositeAlphaMode::Inherit`].
     pub alpha_modes: Vec<CompositeAlphaMode>,
+    /// List of supported scaling modes to use with the given adapter, in
+    /// preference order: the first element is what
+    /// [`SurfaceScalingMode::Auto`] resolves to.
+    ///
+    /// Each listed mode applies to every present mode in
+    /// [`present_modes`](Self::present_modes), so a configuration that passes
+    /// validation is honored by the backend.
+    ///
+    /// May be empty, which means the platform does not let wgpu control how a
+    /// swapchain image is mapped onto a surface with a different extent (for
+    /// example GLES, the web, and Vulkan drivers without the surface
+    /// maintenance extensions). In that case
+    /// [`SurfaceScalingMode::Auto`] is accepted and the platform default
+    /// applies; any other mode is a validation error.
+    ///
+    /// [`SurfaceScalingMode::Auto`] itself is never listed.
+    pub scaling_modes: Vec<SurfaceScalingMode>,
     /// Bitflag of supported texture usages for the surface to use with the given adapter.
     ///
     /// The usage [`TextureUsages::RENDER_ATTACHMENT`] is guaranteed.
@@ -558,6 +642,7 @@ impl Default for SurfaceCapabilities {
             format_capabilities: Vec::new(),
             present_modes: Vec::new(),
             alpha_modes: vec![CompositeAlphaMode::Opaque],
+            scaling_modes: Vec::new(),
             usages: TextureUsages::RENDER_ATTACHMENT,
         }
     }
@@ -782,19 +867,23 @@ pub struct SurfaceConfiguration<V> {
     /// present in the format's
     /// [`color_spaces`](SurfaceFormatCapabilities::color_spaces) set.
     pub color_space: SurfaceColorSpace,
-    /// Width of the swap chain. Must be the same size as the surface, and nonzero.
+    /// Width of the swap chain. Must be nonzero.
     ///
     /// If this is not the same size as the underlying surface (e.g. if it is
-    /// set once, and the window is later resized), the behaviour is defined
-    /// but platform-specific, and may change in the future (currently macOS
-    /// scales the surface, other platforms may do something else).
+    /// set once, and the window is later resized), the mapping from the swap
+    /// chain image to the surface is governed by
+    /// [`scaling_mode`](Self::scaling_mode). Only the modes listed in
+    /// [`SurfaceCapabilities::scaling_modes`] are available; platforms that
+    /// cannot control scaling are listed there as an empty list.
     pub width: u32,
-    /// Height of the swap chain. Must be the same size as the surface, and nonzero.
+    /// Height of the swap chain. Must be nonzero.
     ///
     /// If this is not the same size as the underlying surface (e.g. if it is
-    /// set once, and the window is later resized), the behaviour is defined
-    /// but platform-specific, and may change in the future (currently macOS
-    /// scales the surface, other platforms may do something else).
+    /// set once, and the window is later resized), the mapping from the swap
+    /// chain image to the surface is governed by
+    /// [`scaling_mode`](Self::scaling_mode). Only the modes listed in
+    /// [`SurfaceCapabilities::scaling_modes`] are available; platforms that
+    /// cannot control scaling are listed there as an empty list.
     pub height: u32,
     /// Presentation mode of the swap chain. Fifo is the only mode guaranteed to be supported.
     /// `FifoRelaxed`, `Immediate`, and `Mailbox` will crash if unsupported, while `AutoVsync` and
@@ -838,6 +927,16 @@ pub struct SurfaceConfiguration<V> {
     pub desired_maximum_frame_latency: u32,
     /// Specifies how the alpha channel of the textures should be handled during compositing.
     pub alpha_mode: CompositeAlphaMode,
+    /// Specifies how a swap chain image is mapped onto the surface when
+    /// [`width`](Self::width) and [`height`](Self::height) do not match the
+    /// size of the surface.
+    ///
+    /// [`SurfaceScalingMode::Auto`] (the default) prefers
+    /// [`SurfaceScalingMode::Stretch`], falling back to the platform default on
+    /// platforms that cannot control scaling. Any other value must be listed in
+    /// [`SurfaceCapabilities::scaling_modes`].
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub scaling_mode: SurfaceScalingMode,
     /// Specifies what view formats will be allowed when calling `Texture::create_view` on
     /// the texture returned by `Surface::get_current_texture`.
     ///
@@ -868,6 +967,7 @@ impl<V: Clone> SurfaceConfiguration<V> {
             present_mode: self.present_mode,
             desired_maximum_frame_latency: self.desired_maximum_frame_latency,
             alpha_mode: self.alpha_mode,
+            scaling_mode: self.scaling_mode,
             view_formats: fun(&self.view_formats),
         }
     }

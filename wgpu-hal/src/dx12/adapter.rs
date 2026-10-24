@@ -1379,6 +1379,20 @@ impl crate::Adapter for super::Adapter {
                     wgt::CompositeAlphaMode::PreMultiplied,
                 ],
             },
+            // `CreateSwapChainForComposition` and
+            // `CreateSwapChainForCompositionSurfaceHandle` only accept
+            // `DXGI_SCALING_STRETCH`.
+            scaling_modes: match surface.target {
+                SurfaceTarget::WndHandle(_) => vec![
+                    wgt::SurfaceScalingMode::Stretch,
+                    wgt::SurfaceScalingMode::AspectRatio,
+                    wgt::SurfaceScalingMode::OneToOne,
+                ],
+                SurfaceTarget::Visual(_)
+                | SurfaceTarget::VisualFromWndHandle { .. }
+                | SurfaceTarget::SurfaceHandle(_)
+                | SurfaceTarget::SwapChainPanel(_) => vec![wgt::SurfaceScalingMode::Stretch],
+            },
         })
     }
 

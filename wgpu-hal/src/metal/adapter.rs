@@ -521,6 +521,13 @@ impl crate::Adapter for super::Adapter {
                 wgt::CompositeAlphaMode::Opaque,
                 wgt::CompositeAlphaMode::PreMultiplied,
             ],
+            // `CALayer.contentsGravity` can stretch (`resize`) or preserve the
+            // aspect ratio (`resizeAspect`), but it has no "one image pixel per
+            // surface pixel" mode.
+            scaling_modes: vec![
+                wgt::SurfaceScalingMode::Stretch,
+                wgt::SurfaceScalingMode::AspectRatio,
+            ],
 
             current_extent: Some(surface.dimensions()),
             usage: wgt::TextureUses::COLOR_TARGET

@@ -54,6 +54,84 @@ impl NativeSurface {
         self.raw
     }
 
+    /// Whether the instance extensions needed to query and set the present
+    /// scaling mode are enabled.
+    fn supports_surface_maintenance1(&self) -> bool {
+        self.instance
+            .extensions
+            .contains(&super::super::SURFACE_MAINTENANCE1_NAME)
+            || self
+                .instance
+                .extensions
+                .contains(&super::super::SURFACE_MAINTENANCE1_KHR_NAME)
+    }
+
+    /// Queries `VkSurfacePresentScalingCapabilitiesEXT` for this surface with
+    /// `present_mode`, or `None` if the query is unavailable or fails.
+    ///
+    /// The reported scaling modes are defined per present mode, so this is also
+    /// used when creating a swapchain to confirm the requested combination.
+    fn present_scaling_capabilities(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        present_mode: vk::PresentModeKHR,
+    ) -> Option<vk::SurfacePresentScalingCapabilitiesEXT<'static>> {
+        if !self.supports_surface_maintenance1() {
+            return None;
+        }
+        let get_surface_capabilities = self.instance.get_surface_capabilities.as_ref()?;
+
+        let mut present_mode_info = vk::SurfacePresentModeEXT::default().present_mode(present_mode);
+        let surface_info = vk::PhysicalDeviceSurfaceInfo2KHR::default()
+            .surface(self.raw)
+            .push_next(&mut present_mode_info);
+        let mut scaling = vk::SurfacePresentScalingCapabilitiesEXT::default();
+        let mut caps2 = vk::SurfaceCapabilities2KHR::default().push_next(&mut scaling);
+
+        profiling::scope!("vkGetPhysicalDeviceSurfaceCapabilities2KHR");
+        match unsafe {
+            get_surface_capabilities.get_physical_device_surface_capabilities2(
+                physical_device,
+                &surface_info,
+                &mut caps2,
+            )
+        } {
+            Ok(()) => Some(scaling),
+            Err(e) => {
+                log::warn!("vkGetPhysicalDeviceSurfaceCapabilities2KHR failed: {e}");
+                None
+            }
+        }
+    }
+
+    /// Returns the scaling modes supported for every one of `present_modes`, in
+    /// preference order.
+    ///
+    /// Intersecting the per-present-mode results keeps
+    /// `SurfaceCapabilities::scaling_modes` a guarantee: a configuration that
+    /// passes `wgpu-core` validation can be honored for any present mode the
+    /// surface advertises.
+    fn surface_scaling_modes(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        present_modes: &[vk::PresentModeKHR],
+    ) -> Vec<wgt::SurfaceScalingMode> {
+        let mut supported: Option<vk::PresentScalingFlagsEXT> = None;
+        for &present_mode in present_modes {
+            let Some(caps) = self.present_scaling_capabilities(physical_device, present_mode)
+            else {
+                return Vec::new();
+            };
+            supported = Some(match supported {
+                Some(accumulated) => accumulated & caps.supported_present_scaling,
+                None => caps.supported_present_scaling,
+            });
+        }
+        supported
+            .map(conv::map_vk_present_scaling)
+            .unwrap_or_default()
+    }
+
     /// # Safety
     ///
     /// See [`Surface::set_next_swapchain_create_chain()`](crate::vulkan::Surface::set_next_swapchain_create_chain).
@@ -186,10 +264,12 @@ impl Surface for NativeSurface {
             current_extent,
             usage: conv::map_vk_image_usage(caps.supported_usage_flags),
             present_modes: raw_present_modes
-                .into_iter()
+                .iter()
+                .copied()
                 .flat_map(conv::map_vk_present_mode)
                 .collect(),
             composite_alpha_modes: conv::map_vk_composite_alpha(caps.supported_composite_alpha),
+            scaling_modes: self.surface_scaling_modes(adapter.raw, &raw_present_modes),
         })
     }
 
@@ -245,6 +325,40 @@ impl Surface for NativeSurface {
         if !raw_view_formats.is_empty() {
             format_list_info = format_list_info.view_formats(&raw_view_formats);
             info = info.push_next(&mut format_list_info);
+        }
+
+        // `VkSwapchainPresentScalingCreateInfoEXT` only applies when the
+        // requested scaling mode is legal for this surface *and* present mode
+        // (VUID-VkSwapchainPresentScalingCreateInfoKHR-scalingBehavior-07770),
+        // and the image extent is within the scaled extent range
+        // (VUID-VkSwapchainCreateInfoKHR-pNext-07782). Otherwise the structure
+        // is left out and the platform default applies.
+        let mut scaling_info = vk::SwapchainPresentScalingCreateInfoEXT::default();
+        let mut use_scaling_info = false;
+        if let Some(scaling) = conv::map_surface_scaling_mode(config.scaling_mode) {
+            let caps = if device.shared.private_caps.swapchain_maintenance1 {
+                self.present_scaling_capabilities(
+                    device.shared.physical_device,
+                    conv::map_present_mode(config.present_mode),
+                )
+            } else {
+                None
+            };
+            let supported = caps.is_some_and(|caps| {
+                caps.supported_present_scaling.contains(scaling)
+                    && extent_within_scaled_range(caps, config.extent)
+            });
+            if supported {
+                scaling_info = scaling_info.scaling_behavior(scaling);
+                use_scaling_info = true;
+            } else {
+                log::warn!(
+                    "Present scaling {scaling:?} is not supported here; the platform default applies"
+                );
+            }
+        }
+        if use_scaling_info {
+            info = info.push_next(&mut scaling_info);
         }
 
         let create_chain = self.next_swapchain_create_chain.lock().take();
@@ -332,6 +446,18 @@ impl Surface for NativeSurface {
     fn as_any(&self) -> &dyn Any {
         self
     }
+}
+
+/// Whether `extent` is within the range of scaled image extents a surface
+/// supports for the requested present scaling mode.
+fn extent_within_scaled_range(
+    caps: vk::SurfacePresentScalingCapabilitiesEXT<'_>,
+    extent: wgt::Extent3d,
+) -> bool {
+    caps.min_scaled_image_extent.width <= extent.width
+        && extent.width <= caps.max_scaled_image_extent.width
+        && caps.min_scaled_image_extent.height <= extent.height
+        && extent.height <= caps.max_scaled_image_extent.height
 }
 
 pub(crate) struct NativeSwapchain {

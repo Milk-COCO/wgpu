@@ -68,6 +68,24 @@ use crate::vulkan::semaphore_list::{SemaphoreListMode, SemaphoreType};
 
 const MAX_TOTAL_ATTACHMENTS: usize = crate::MAX_COLOR_ATTACHMENTS * 2 + 1;
 
+/// Enables querying per-present-mode surface capabilities, including the
+/// present scaling modes, with `vkGetPhysicalDeviceSurfaceCapabilities2KHR`.
+///
+/// ash has no module for this extension because it declares no commands, so the
+/// name is spelled out here.
+const SURFACE_MAINTENANCE1_NAME: &CStr = c"VK_EXT_surface_maintenance1";
+
+/// The Vulkan 1.4 alias of [`SURFACE_MAINTENANCE1_NAME`].
+const SURFACE_MAINTENANCE1_KHR_NAME: &CStr = c"VK_KHR_surface_maintenance1";
+
+/// Enables `VkSwapchainPresentScalingCreateInfoEXT`, which is how a swapchain
+/// tells the presentation engine how to map its images onto a surface of a
+/// different extent.
+const SWAPCHAIN_MAINTENANCE1_NAME: &CStr = c"VK_EXT_swapchain_maintenance1";
+
+/// The Vulkan 1.4 alias of [`SWAPCHAIN_MAINTENANCE1_NAME`].
+const SWAPCHAIN_MAINTENANCE1_KHR_NAME: &CStr = c"VK_KHR_swapchain_maintenance1";
+
 #[derive(Clone, Debug)]
 pub struct Api;
 
@@ -180,6 +198,9 @@ pub struct InstanceShared {
     memory_budget_thresholds: wgt::MemoryBudgetThresholds,
     debug_utils: Option<DebugUtils>,
     get_physical_device_properties: Option<khr::get_physical_device_properties2::Instance>,
+    /// `vkGetPhysicalDeviceSurfaceCapabilities2KHR`, used to query the present
+    /// scaling modes a surface supports for a given present mode.
+    get_surface_capabilities: Option<khr::get_surface_capabilities2::Instance>,
     entry: ash::Entry,
     has_nv_optimus: bool,
     android_sdk_version: u32,
@@ -205,6 +226,7 @@ impl fmt::Debug for InstanceShared {
             memory_budget_thresholds,
             debug_utils: _,
             get_physical_device_properties: _,
+            get_surface_capabilities: _,
             entry: _,
             has_nv_optimus,
             android_sdk_version,
@@ -526,6 +548,10 @@ struct PrivateCapabilities {
     /// - `VK_ATTACHMENT_STORE_OP_NONE_QCOM` provided by `VK_QCOM_render_pass_store_ops`.
     /// - `VK_ATTACHMENT_STORE_OP_NONE_EXT` provided by `VK_EXT_load_store_op_none`.
     store_op_none: bool,
+
+    /// True if `VK_EXT_swapchain_maintenance1` is enabled, so a swapchain can
+    /// carry a `VkSwapchainPresentScalingCreateInfoEXT`.
+    swapchain_maintenance1: bool,
 }
 
 bitflags::bitflags!(

@@ -172,6 +172,37 @@ pub(crate) fn validate_surface_configuration(
         );
         config.composite_alpha_mode = new_alpha_mode;
     }
+    if !caps.scaling_modes.contains(&config.scaling_mode) {
+        // Automatic scaling mode checks.
+        let fallbacks: &[_] = match config.scaling_mode {
+            wgt::SurfaceScalingMode::Auto => &[
+                wgt::SurfaceScalingMode::Stretch,
+                wgt::SurfaceScalingMode::AspectRatio,
+                wgt::SurfaceScalingMode::OneToOne,
+            ][..],
+            _ => {
+                return Err(E::UnsupportedScalingMode {
+                    requested: config.scaling_mode,
+                    available: caps.scaling_modes.clone(),
+                });
+            }
+        };
+
+        // An empty `scaling_modes` list means the backend cannot control
+        // scaling, in which case `Auto` is passed through and the backend uses
+        // the platform default.
+        if let Some(new_scaling_mode) = fallbacks
+            .iter()
+            .find(|fallback| caps.scaling_modes.contains(fallback))
+            .copied()
+        {
+            api_log!(
+                "Automatically choosing scaling mode by rule {:?}. Chose {new_scaling_mode:?}",
+                config.scaling_mode
+            );
+            config.scaling_mode = new_scaling_mode;
+        }
+    }
     if !caps.usage.contains(config.usage) {
         return Err(E::UnsupportedUsage {
             requested: config.usage,
@@ -199,6 +230,7 @@ mod surface_configuration_tests {
             usage: wgt::TextureUses::COLOR_TARGET,
             present_modes: vec![wgt::PresentMode::Fifo],
             composite_alpha_modes: vec![wgt::CompositeAlphaMode::Opaque],
+            scaling_modes: vec![wgt::SurfaceScalingMode::Stretch],
         }
     }
 
@@ -210,6 +242,7 @@ mod surface_configuration_tests {
             maximum_frame_latency: 2,
             present_mode: wgt::PresentMode::Fifo,
             composite_alpha_mode: wgt::CompositeAlphaMode::Opaque,
+            scaling_mode: wgt::SurfaceScalingMode::Auto,
             format,
             color_space,
             extent: wgt::Extent3d {
@@ -372,5 +405,107 @@ mod surface_configuration_tests {
                 ..
             }
         ));
+    }
+
+    /// `SurfaceScalingMode::Auto` resolves to `Stretch`, restoring the
+    /// stretching behavior of D3D12 and Metal on backends that can control
+    /// scaling.
+    #[test]
+    fn auto_scaling_resolves_to_stretch() {
+        let mut caps = caps(vec![format_caps(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpaces::SRGB,
+        )]);
+        caps.scaling_modes = vec![
+            wgt::SurfaceScalingMode::Stretch,
+            wgt::SurfaceScalingMode::AspectRatio,
+        ];
+        let mut config = config(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpace::Auto,
+        );
+        validate_surface_configuration(&mut config, &caps, 4096).unwrap();
+        assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::Stretch);
+    }
+
+    /// Without `Stretch`, `SurfaceScalingMode::Auto` takes the first supported
+    /// mode.
+    #[test]
+    fn auto_scaling_takes_first_supported_mode() {
+        let mut caps = caps(vec![format_caps(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpaces::SRGB,
+        )]);
+        caps.scaling_modes = vec![wgt::SurfaceScalingMode::AspectRatio];
+        let mut config = config(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpace::Auto,
+        );
+        validate_surface_configuration(&mut config, &caps, 4096).unwrap();
+        assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::AspectRatio);
+    }
+
+    /// An empty `scaling_modes` list means the backend cannot control scaling:
+    /// `Auto` is passed through and the platform default applies.
+    #[test]
+    fn auto_scaling_stays_auto_without_support() {
+        let mut caps = caps(vec![format_caps(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpaces::SRGB,
+        )]);
+        caps.scaling_modes = Vec::new();
+        let mut config = config(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpace::Auto,
+        );
+        validate_surface_configuration(&mut config, &caps, 4096).unwrap();
+        assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::Auto);
+    }
+
+    /// Explicitly requested scaling modes are honored when supported.
+    #[test]
+    fn explicit_scaling_mode_is_honored() {
+        let mut caps = caps(vec![format_caps(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpaces::SRGB,
+        )]);
+        caps.scaling_modes = vec![
+            wgt::SurfaceScalingMode::Stretch,
+            wgt::SurfaceScalingMode::AspectRatio,
+            wgt::SurfaceScalingMode::OneToOne,
+        ];
+        let mut config = config(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpace::Auto,
+        );
+        config.scaling_mode = wgt::SurfaceScalingMode::OneToOne;
+        validate_surface_configuration(&mut config, &caps, 4096).unwrap();
+        assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::OneToOne);
+    }
+
+    /// Explicitly requesting an unsupported scaling mode fails validation,
+    /// including when the backend cannot control scaling at all.
+    #[test]
+    fn explicit_unsupported_scaling_mode_errors() {
+        for scaling_modes in [vec![wgt::SurfaceScalingMode::Stretch], Vec::new()] {
+            let mut caps = caps(vec![format_caps(
+                wgt::TextureFormat::Bgra8UnormSrgb,
+                wgt::SurfaceColorSpaces::SRGB,
+            )]);
+            caps.scaling_modes = scaling_modes;
+            let mut config = config(
+                wgt::TextureFormat::Bgra8UnormSrgb,
+                wgt::SurfaceColorSpace::Auto,
+            );
+            config.scaling_mode = wgt::SurfaceScalingMode::OneToOne;
+            let err = validate_surface_configuration(&mut config, &caps, 4096).unwrap_err();
+            assert!(matches!(
+                err,
+                ConfigureSurfaceError::UnsupportedScalingMode {
+                    requested: wgt::SurfaceScalingMode::OneToOne,
+                    ..
+                }
+            ));
+        }
     }
 }

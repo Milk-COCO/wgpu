@@ -340,6 +340,25 @@ impl crate::Surface for super::Surface {
         let colorspace = colorspace_name.and_then(|name| CGColorSpace::with_name(Some(name)));
         render_layer.setColorspace(colorspace.as_deref());
 
+        // `CALayer.contentsGravity` decides how the drawable is mapped onto the
+        // layer's bounds when the two sizes differ. `kCAGravityResize`, the
+        // default, stretches; `kCAGravityResizeAspect` preserves the aspect
+        // ratio. `surface_capabilities` doesn't report
+        // `wgt::SurfaceScalingMode::OneToOne`, so it falls back to stretching.
+        let gravity = match config.scaling_mode {
+            wgt::SurfaceScalingMode::AspectRatio => {
+                // SAFETY: `kCAGravity*` are immutable Core Animation constants.
+                unsafe { objc2_quartz_core::kCAGravityResizeAspect }
+            }
+            wgt::SurfaceScalingMode::Auto
+            | wgt::SurfaceScalingMode::Stretch
+            | wgt::SurfaceScalingMode::OneToOne => {
+                // SAFETY: as above.
+                unsafe { objc2_quartz_core::kCAGravityResize }
+            }
+        };
+        render_layer.setContentsGravity(gravity);
+
         // this gets ignored on iOS for certain OS/device combinations (iphone5s iOS 10.3)
         render_layer.setMaximumDrawableCount(config.maximum_frame_latency as usize + 1);
         render_layer.setDrawableSize(drawable_size);

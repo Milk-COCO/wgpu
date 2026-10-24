@@ -582,6 +582,35 @@ pub fn map_composite_alpha_mode(mode: wgt::CompositeAlphaMode) -> vk::CompositeA
     }
 }
 
+pub fn map_surface_scaling_mode(
+    mode: wgt::SurfaceScalingMode,
+) -> Option<vk::PresentScalingFlagsEXT> {
+    match mode {
+        wgt::SurfaceScalingMode::Auto => None,
+        wgt::SurfaceScalingMode::Stretch => Some(vk::PresentScalingFlagsEXT::STRETCH),
+        wgt::SurfaceScalingMode::AspectRatio => {
+            Some(vk::PresentScalingFlagsEXT::ASPECT_RATIO_STRETCH)
+        }
+        wgt::SurfaceScalingMode::OneToOne => Some(vk::PresentScalingFlagsEXT::ONE_TO_ONE),
+    }
+}
+
+/// Maps the present scaling flags a surface supports to scaling modes, in
+/// preference order.
+pub fn map_vk_present_scaling(flags: vk::PresentScalingFlagsEXT) -> Vec<wgt::SurfaceScalingMode> {
+    let mut modes = Vec::new();
+    if flags.contains(vk::PresentScalingFlagsEXT::STRETCH) {
+        modes.push(wgt::SurfaceScalingMode::Stretch);
+    }
+    if flags.contains(vk::PresentScalingFlagsEXT::ASPECT_RATIO_STRETCH) {
+        modes.push(wgt::SurfaceScalingMode::AspectRatio);
+    }
+    if flags.contains(vk::PresentScalingFlagsEXT::ONE_TO_ONE) {
+        modes.push(wgt::SurfaceScalingMode::OneToOne);
+    }
+    modes
+}
+
 pub fn map_vk_composite_alpha(flags: vk::CompositeAlphaFlagsKHR) -> Vec<wgt::CompositeAlphaMode> {
     let mut modes = Vec::new();
     if flags.contains(vk::CompositeAlphaFlagsKHR::OPAQUE) {

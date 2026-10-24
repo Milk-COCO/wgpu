@@ -504,6 +504,11 @@ struct SwapChain {
     present_mode: wgt::PresentMode,
     format: wgt::TextureFormat,
     size: wgt::Extent3d,
+    /// The scaling behavior the swap chain was created with.
+    ///
+    /// DXGI does not let `ResizeBuffers` change this, so `configure` has to
+    /// recreate the swap chain when it differs.
+    scaling: Dxgi::DXGI_SCALING,
 }
 
 enum SurfaceTarget {
@@ -1368,6 +1373,36 @@ fn map_surface_color_space(
     }
 }
 
+fn map_surface_scaling_mode(
+    mode: wgt::SurfaceScalingMode,
+    target: &SurfaceTarget,
+) -> Dxgi::DXGI_SCALING {
+    // `IDXGIFactory2::CreateSwapChainForComposition` and its surface-handle
+    // sibling only accept `DXGI_SCALING_STRETCH`.
+    let composition = matches!(
+        target,
+        SurfaceTarget::Visual(_)
+            | SurfaceTarget::VisualFromWndHandle { .. }
+            | SurfaceTarget::SurfaceHandle(_)
+            | SurfaceTarget::SwapChainPanel(_)
+    );
+    match mode {
+        // `Auto` only reaches a backend that reported no scaling modes.
+        wgt::SurfaceScalingMode::Auto | wgt::SurfaceScalingMode::Stretch => {
+            Dxgi::DXGI_SCALING_STRETCH
+        }
+        wgt::SurfaceScalingMode::AspectRatio if !composition => {
+            Dxgi::DXGI_SCALING_ASPECT_RATIO_STRETCH
+        }
+        wgt::SurfaceScalingMode::OneToOne if !composition => Dxgi::DXGI_SCALING_NONE,
+        // Unreachable via `wgpu-core`, which validates against
+        // `SurfaceCapabilities::scaling_modes`; clamp for composition targets.
+        wgt::SurfaceScalingMode::AspectRatio | wgt::SurfaceScalingMode::OneToOne => {
+            Dxgi::DXGI_SCALING_STRETCH
+        }
+    }
+}
+
 impl crate::Surface for Surface {
     type A = Api;
 
@@ -1402,7 +1437,22 @@ impl crate::Surface for Surface {
         // For high latency extra buffers seems excessive, so go with a minimum of 3 and beyond that add 1.
         let swap_chain_buffer = (config.maximum_frame_latency + 1).min(16);
 
-        let swap_chain = match self.swap_chain.write().take() {
+        let wanted_scaling = map_surface_scaling_mode(config.scaling_mode, &self.target);
+
+        let mut existing_swap_chain = self.swap_chain.write().take();
+        // `ResizeBuffers` cannot change the scaling behavior, so a requested
+        // change requires creating a new swap chain. `release_resources` also
+        // frees the waitable object.
+        if existing_swap_chain
+            .as_ref()
+            .is_some_and(|sc| sc.scaling != wanted_scaling)
+        {
+            if let Some(sc) = existing_swap_chain.take() {
+                let _ = unsafe { sc.release_resources() };
+            }
+        }
+
+        let swap_chain = match existing_swap_chain {
             //Note: this path doesn't properly re-initialize all of the things
             Some(sc) => {
                 let raw = unsafe { sc.release_resources() };
@@ -1422,71 +1472,91 @@ impl crate::Surface for Surface {
                 raw
             }
             None => {
-                let desc = Dxgi::DXGI_SWAP_CHAIN_DESC1 {
-                    AlphaMode: auxil::dxgi::conv::map_acomposite_alpha_mode(
-                        config.composite_alpha_mode,
-                    ),
-                    Width: config.extent.width,
-                    Height: config.extent.height,
-                    Format: non_srgb_format,
-                    Stereo: false.into(),
-                    SampleDesc: Dxgi::Common::DXGI_SAMPLE_DESC {
-                        Count: 1,
-                        Quality: 0,
-                    },
-                    BufferUsage: Dxgi::DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                    BufferCount: swap_chain_buffer,
-                    Scaling: Dxgi::DXGI_SCALING_STRETCH,
-                    SwapEffect: Dxgi::DXGI_SWAP_EFFECT_FLIP_DISCARD,
-                    Flags: flags.0 as u32,
-                };
-                let swap_chain1 = match self.target {
-                    SurfaceTarget::Visual(_)
-                    | SurfaceTarget::VisualFromWndHandle { .. }
-                    | SurfaceTarget::SwapChainPanel(_) => {
-                        profiling::scope!("IDXGIFactory2::CreateSwapChainForComposition");
-                        unsafe {
-                            self.factory.CreateSwapChainForComposition(
-                                &device.present_queue,
-                                &desc,
-                                None,
-                            )
-                        }
-                    }
-                    SurfaceTarget::SurfaceHandle(handle) => {
-                        profiling::scope!(
-                            "IDXGIFactoryMedia::CreateSwapChainForCompositionSurfaceHandle"
-                        );
-                        unsafe {
-                            self.factory_media
-                                .as_ref()
-                                .ok_or(crate::SurfaceError::Other("IDXGIFactoryMedia not found"))?
-                                .CreateSwapChainForCompositionSurfaceHandle(
+                let mut scaling = wanted_scaling;
+                let swap_chain1 = loop {
+                    let desc = Dxgi::DXGI_SWAP_CHAIN_DESC1 {
+                        AlphaMode: auxil::dxgi::conv::map_acomposite_alpha_mode(
+                            config.composite_alpha_mode,
+                        ),
+                        Width: config.extent.width,
+                        Height: config.extent.height,
+                        Format: non_srgb_format,
+                        Stereo: false.into(),
+                        SampleDesc: Dxgi::Common::DXGI_SAMPLE_DESC {
+                            Count: 1,
+                            Quality: 0,
+                        },
+                        BufferUsage: Dxgi::DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                        BufferCount: swap_chain_buffer,
+                        Scaling: scaling,
+                        SwapEffect: Dxgi::DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                        Flags: flags.0 as u32,
+                    };
+                    let result = match self.target {
+                        SurfaceTarget::Visual(_)
+                        | SurfaceTarget::VisualFromWndHandle { .. }
+                        | SurfaceTarget::SwapChainPanel(_) => {
+                            profiling::scope!("IDXGIFactory2::CreateSwapChainForComposition");
+                            unsafe {
+                                self.factory.CreateSwapChainForComposition(
                                     &device.present_queue,
-                                    Some(handle),
                                     &desc,
                                     None,
                                 )
+                            }
                         }
-                    }
-                    SurfaceTarget::WndHandle(hwnd) => {
-                        profiling::scope!("IDXGIFactory2::CreateSwapChainForHwnd");
-                        unsafe {
-                            self.factory.CreateSwapChainForHwnd(
-                                &device.present_queue,
-                                hwnd,
-                                &desc,
-                                None,
-                                None,
-                            )
+                        SurfaceTarget::SurfaceHandle(handle) => {
+                            profiling::scope!(
+                                "IDXGIFactoryMedia::CreateSwapChainForCompositionSurfaceHandle"
+                            );
+                            unsafe {
+                                self.factory_media
+                                    .as_ref()
+                                    .ok_or(crate::SurfaceError::Other(
+                                        "IDXGIFactoryMedia not found",
+                                    ))?
+                                    .CreateSwapChainForCompositionSurfaceHandle(
+                                        &device.present_queue,
+                                        Some(handle),
+                                        &desc,
+                                        None,
+                                    )
+                            }
+                        }
+                        SurfaceTarget::WndHandle(hwnd) => {
+                            profiling::scope!("IDXGIFactory2::CreateSwapChainForHwnd");
+                            unsafe {
+                                self.factory.CreateSwapChainForHwnd(
+                                    &device.present_queue,
+                                    hwnd,
+                                    &desc,
+                                    None,
+                                    None,
+                                )
+                            }
+                        }
+                    };
+
+                    match result {
+                        Ok(swap_chain) => break swap_chain,
+                        // Older Windows versions and some drivers reject
+                        // `DXGI_SCALING_NONE` / `DXGI_SCALING_ASPECT_RATIO_STRETCH`.
+                        Err(err)
+                            if scaling != Dxgi::DXGI_SCALING_STRETCH
+                                && err.code() == Foundation::E_INVALIDARG =>
+                        {
+                            log::warn!(
+                                "swapchain creation with {scaling:?} failed ({err}), \
+                                 falling back to DXGI_SCALING_STRETCH"
+                            );
+                            scaling = Dxgi::DXGI_SCALING_STRETCH;
+                        }
+                        Err(err) => {
+                            log::error!("SwapChain creation error: {err}");
+                            return Err(crate::SurfaceError::Other("swapchain creation"));
                         }
                     }
                 };
-
-                let swap_chain1 = swap_chain1.map_err(|err| {
-                    log::error!("SwapChain creation error: {err}");
-                    crate::SurfaceError::Other("swapchain creation")
-                })?;
 
                 match &self.target {
                     SurfaceTarget::WndHandle(_) | SurfaceTarget::SurfaceHandle(_) => {}
@@ -1604,6 +1674,7 @@ impl crate::Surface for Surface {
             present_mode: config.present_mode,
             format: config.format,
             size: config.extent,
+            scaling: wanted_scaling,
         });
 
         Ok(())

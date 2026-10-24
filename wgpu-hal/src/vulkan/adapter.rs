@@ -145,6 +145,13 @@ pub struct PhysicalDeviceFeatures {
     /// Features provided by `VK_KHR_vulkan_memory_model`, promoted to Vulkan 1.2
     vulkan_memory_model: Option<vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR<'static>>,
 
+    /// Features provided by `VK_EXT_swapchain_maintenance1`, promoted to Vulkan 1.4.
+    ///
+    /// Enabling the `swapchainMaintenance1` feature is a precondition for
+    /// putting `VkSwapchainPresentScalingCreateInfoEXT` in a swapchain's `pNext`
+    /// chain.
+    swapchain_maintenance1: Option<vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT<'static>>,
+
     shader_draw_parameters: Option<vk::PhysicalDeviceShaderDrawParametersFeatures<'static>>,
 }
 
@@ -235,6 +242,9 @@ impl PhysicalDeviceFeatures {
             info = info.push_next(feature);
         }
         if let Some(ref mut feature) = self.shader_draw_parameters {
+            info = info.push_next(feature);
+        }
+        if let Some(ref mut feature) = self.swapchain_maintenance1 {
             info = info.push_next(feature);
         }
         info
@@ -648,6 +658,17 @@ impl PhysicalDeviceFeatures {
                 Some(
                     vk::PhysicalDeviceShaderDrawParametersFeatures::default()
                         .shader_draw_parameters(needed),
+                )
+            } else {
+                None
+            },
+            swapchain_maintenance1: if enabled_extensions
+                .contains(&super::SWAPCHAIN_MAINTENANCE1_NAME)
+                || enabled_extensions.contains(&super::SWAPCHAIN_MAINTENANCE1_KHR_NAME)
+            {
+                Some(
+                    vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default()
+                        .swapchain_maintenance1(true),
                 )
             } else {
                 None
@@ -1378,6 +1399,16 @@ impl PhysicalDeviceProperties {
         // Optional `VK_KHR_swapchain_mutable_format`
         if self.supports_extension(khr::swapchain_mutable_format::NAME) {
             extensions.push(khr::swapchain_mutable_format::NAME);
+        }
+
+        // Optional `VK_EXT_swapchain_maintenance1`
+        // Lets a swapchain carry a `VkSwapchainPresentScalingCreateInfoEXT`, so
+        // the application can pick how the presentation engine maps images onto
+        // a surface of a different extent.
+        if self.supports_extension(super::SWAPCHAIN_MAINTENANCE1_NAME) {
+            extensions.push(super::SWAPCHAIN_MAINTENANCE1_NAME);
+        } else if self.supports_extension(super::SWAPCHAIN_MAINTENANCE1_KHR_NAME) {
+            extensions.push(super::SWAPCHAIN_MAINTENANCE1_KHR_NAME);
         }
 
         // Optional `VK_EXT_robustness2`
@@ -2536,6 +2567,9 @@ impl super::Instance {
                 || phd_capabilities.supports_extension(khr::load_store_op_none::NAME)
                 || phd_capabilities.supports_extension(ash::qcom::render_pass_store_ops::NAME)
                 || phd_capabilities.supports_extension(ext::load_store_op_none::NAME),
+            swapchain_maintenance1: phd_capabilities
+                .supports_extension(super::SWAPCHAIN_MAINTENANCE1_NAME)
+                || phd_capabilities.supports_extension(super::SWAPCHAIN_MAINTENANCE1_KHR_NAME),
         };
         let capabilities = crate::Capabilities {
             limits: phd_capabilities.to_wgpu_limits(),
