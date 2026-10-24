@@ -192,8 +192,9 @@ pub enum SurfaceScalingMode {
     /// * **Maps to**: `DXGI_SCALING_ASPECT_RATIO_STRETCH`,
     ///   [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`],
     ///   `kCAGravityResizeAspect`.
-    /// * **Not reported on**: D3D12, where the swap chain rejects aspect-ratio
-    ///   scaling, so this may be absent from
+    /// * **Not reported on**: D3D12, where `DXGI_SCALING_ASPECT_RATIO_STRETCH`
+    ///   is documented to behave like `DXGI_SCALING_STRETCH` for Win32 window
+    ///   swap chains, so this may be absent from
     ///   [`SurfaceCapabilities::scaling_modes`] on Windows.
     ///
     /// [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
@@ -202,7 +203,7 @@ pub enum SurfaceScalingMode {
     /// exactly one surface pixel.
     ///
     /// * **Maps to**: `DXGI_SCALING_NONE`, [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`].
-    /// * **Not supported on**: Metal, GLES and the web, so it may be absent from
+    /// * **Not reported on**: Metal, GLES and the web, so it may be absent from
     ///   [`SurfaceCapabilities::scaling_modes`].
     ///
     /// [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html

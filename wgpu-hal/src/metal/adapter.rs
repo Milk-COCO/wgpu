@@ -522,8 +522,10 @@ impl crate::Adapter for super::Adapter {
                 wgt::CompositeAlphaMode::PreMultiplied,
             ],
             // `CALayer.contentsGravity` can stretch (`resize`) or preserve the
-            // aspect ratio (`resizeAspect`), but it has no "one image pixel per
-            // surface pixel" mode.
+            // aspect ratio (`resizeAspect`). The other gravities position the
+            // drawable without scaling, which is not a well-defined
+            // one-pixel-per-surface-pixel mapping, so `OneToOne` is not
+            // reported.
             scaling_modes: vec![
                 wgt::SurfaceScalingMode::Stretch,
                 wgt::SurfaceScalingMode::AspectRatio,
