@@ -1438,6 +1438,9 @@ impl crate::Surface for Surface {
         let swap_chain_buffer = (config.maximum_frame_latency + 1).min(16);
 
         let wanted_scaling = map_surface_scaling_mode(config.scaling_mode, &self.target);
+        // What the swap chain actually ends up with, which differs from
+        // `wanted_scaling` if DXGI rejected it and creation was retried.
+        let mut effective_scaling = wanted_scaling;
 
         let mut existing_swap_chain = self.swap_chain.write().take();
         // `ResizeBuffers` cannot change the scaling behavior, so a requested
@@ -1538,13 +1541,13 @@ impl crate::Surface for Surface {
                     };
 
                     match result {
-                        Ok(swap_chain) => break swap_chain,
-                        // Older Windows versions and some drivers reject
-                        // `DXGI_SCALING_NONE` / `DXGI_SCALING_ASPECT_RATIO_STRETCH`.
-                        Err(err)
-                            if scaling != Dxgi::DXGI_SCALING_STRETCH
-                                && err.code() == Foundation::E_INVALIDARG =>
-                        {
+                        Ok(swap_chain) => {
+                            effective_scaling = scaling;
+                            break swap_chain;
+                        }
+                        // Not every driver accepts every scaling value; fall
+                        // back to stretching rather than failing to configure.
+                        Err(err) if scaling != Dxgi::DXGI_SCALING_STRETCH => {
                             log::warn!(
                                 "swapchain creation with {scaling:?} failed ({err}), \
                                  falling back to DXGI_SCALING_STRETCH"
@@ -1674,7 +1677,7 @@ impl crate::Surface for Surface {
             present_mode: config.present_mode,
             format: config.format,
             size: config.extent,
-            scaling: wanted_scaling,
+            scaling: effective_scaling,
         });
 
         Ok(())

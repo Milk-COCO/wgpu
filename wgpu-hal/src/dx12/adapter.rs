@@ -1381,11 +1381,12 @@ impl crate::Adapter for super::Adapter {
             },
             // `CreateSwapChainForComposition` and
             // `CreateSwapChainForCompositionSurfaceHandle` only accept
-            // `DXGI_SCALING_STRETCH`.
+            // `DXGI_SCALING_STRETCH`. `DXGI_SCALING_ASPECT_RATIO_STRETCH` is
+            // rejected for windowed swap chains with the flags wgpu requests, so
+            // it isn't reported here even though `wgpu-core` can be handed it.
             scaling_modes: match surface.target {
                 SurfaceTarget::WndHandle(_) => vec![
                     wgt::SurfaceScalingMode::Stretch,
-                    wgt::SurfaceScalingMode::AspectRatio,
                     wgt::SurfaceScalingMode::OneToOne,
                 ],
                 SurfaceTarget::Visual(_)

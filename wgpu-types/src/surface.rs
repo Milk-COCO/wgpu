@@ -192,6 +192,9 @@ pub enum SurfaceScalingMode {
     /// * **Maps to**: `DXGI_SCALING_ASPECT_RATIO_STRETCH`,
     ///   [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`],
     ///   `kCAGravityResizeAspect`.
+    /// * **Not reported on**: D3D12, where the swap chain rejects aspect-ratio
+    ///   scaling, so this may be absent from
+    ///   [`SurfaceCapabilities::scaling_modes`] on Windows.
     ///
     /// [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
     AspectRatio = 2,
