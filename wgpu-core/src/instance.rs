@@ -1024,7 +1024,17 @@ impl Surface {
             user_callbacks = self.unconfigure_inner(&mut presentation);
 
             let surface_raw = self.raw(device.backend()).unwrap();
-            match unsafe { surface_raw.configure(device.raw(), &hal_config) } {
+            let mut configured = unsafe { surface_raw.configure(device.raw(), &hal_config) };
+            // `Auto` promises a fallback to the platform default, so a backend
+            // that refuses the mode `Auto` resolved to must still be given the
+            // chance to fall back.
+            if matches!(configured, Err(hal::SurfaceError::UnsupportedScalingMode))
+                && config.scaling_mode == wgt::SurfaceScalingMode::Auto
+            {
+                hal_config.scaling_mode = wgt::SurfaceScalingMode::Auto;
+                configured = unsafe { surface_raw.configure(device.raw(), &hal_config) };
+            }
+            match configured {
                 Ok(()) => {
                     *presentation = Some(Presentation {
                         device: Arc::clone(device),
@@ -1039,7 +1049,7 @@ impl Surface {
                     | hal::SurfaceError::Occluded
                     | hal::SurfaceError::Timeout => E::InvalidSurface,
                     hal::SurfaceError::UnsupportedScalingMode => E::UnsupportedScalingMode {
-                        requested: config.scaling_mode,
+                        requested: hal_config.scaling_mode,
                         available: caps.scaling_modes.clone(),
                     },
                     hal::SurfaceError::Device(error) => E::Device(device.handle_hal_error(error)),
