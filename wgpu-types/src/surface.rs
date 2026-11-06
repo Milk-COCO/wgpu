@@ -150,8 +150,11 @@ pub enum CompositeAlphaMode {
 ///
 /// The modes a surface can apply are listed in
 /// [`SurfaceCapabilities::scaling_modes`]; choosing a mode that is not listed
-/// is a validation error. That list may be empty, which means the platform
-/// cannot control scaling at all and whatever the compositor does applies.
+/// is a validation error. That list is wgpu's best understanding of the
+/// platform rather than a guarantee, and may be empty, which means the platform
+/// cannot control scaling at all and whatever the compositor does applies. A
+/// mode that is listed but that the platform refuses anyway is also a
+/// validation error; only [`Auto`](Self::Auto) falls back silently.
 ///
 /// # Historical behavior
 ///
@@ -609,8 +612,15 @@ pub struct SurfaceCapabilities {
     /// [`SurfaceScalingMode::Auto`] resolves to.
     ///
     /// Each listed mode applies to every present mode in
-    /// [`present_modes`](Self::present_modes), so a configuration that passes
-    /// validation is honored by the backend.
+    /// [`present_modes`](Self::present_modes).
+    ///
+    /// The list is what wgpu expects the platform to accept, not a guarantee:
+    /// it is exact where the backend can query it (Vulkan, per present mode)
+    /// and inferred from the platform's documented rules where it cannot
+    /// (D3D12, Metal, GLES and the web). A driver can still reject a listed mode
+    /// when the surface is configured; an explicit mode then fails with a
+    /// validation error, while [`SurfaceScalingMode::Auto`] falls back to the
+    /// platform default.
     ///
     /// May be empty, which means the platform does not let wgpu control how a
     /// swapchain image is mapped onto a surface with a different extent (for
@@ -942,7 +952,8 @@ pub struct SurfaceConfiguration<V> {
     /// [`SurfaceScalingMode::Auto`] (the default) prefers
     /// [`SurfaceScalingMode::Stretch`], falling back to the platform default on
     /// platforms that cannot control scaling. Any other value must be listed in
-    /// [`SurfaceCapabilities::scaling_modes`].
+    /// [`SurfaceCapabilities::scaling_modes`], and configuring fails with a
+    /// validation error if the platform refuses it.
     #[cfg_attr(feature = "serde", serde(default))]
     pub scaling_mode: SurfaceScalingMode,
     /// Specifies what view formats will be allowed when calling `Texture::create_view` on
