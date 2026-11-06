@@ -155,11 +155,11 @@ pub enum CompositeAlphaMode {
 ///
 /// # Historical behavior
 ///
-/// Hardware-accelerated backends used to stretch unconditionally. Some Vulkan
-/// drivers started applying [`AspectRatio`](Self::AspectRatio) instead, which
-/// made the same application behave differently across drivers.
-/// [`Auto`](Self::Auto) resolves to a mode that restores the previous
-/// stretching behavior wherever the driver lets wgpu ask for it.
+/// wgpu used to leave this to each backend: D3D12 always stretched and Metal
+/// defaulted to stretching, while Vulkan's behavior was implementation-defined
+/// and some drivers switched to preserving the aspect ratio. [`Auto`](Self::Auto)
+/// resolves to a mode that restores stretching wherever the driver lets wgpu ask
+/// for it.
 #[repr(C)]
 #[derive(Debug, ConstDefault!, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -178,8 +178,6 @@ pub enum SurfaceScalingMode {
     Auto = 0,
     /// The image is scaled to fill the surface, ignoring its aspect ratio.
     ///
-    /// * **Also known as**: the historical behavior of D3D12, Metal and older
-    ///   Vulkan drivers.
     /// * **Maps to**: `DXGI_SCALING_STRETCH`, [`VK_SURFACE_PRESENT_SCALING_STRETCH_BIT_EXT`],
     ///   `kCAGravityResize`.
     ///
