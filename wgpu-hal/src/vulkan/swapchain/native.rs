@@ -286,6 +286,10 @@ impl Surface for NativeSurface {
         provided_old_swapchain: Option<Box<dyn Swapchain>>,
     ) -> Result<Box<dyn Swapchain>, crate::SurfaceError> {
         profiling::scope!("Device::create_swapchain");
+        // Consume the caller's chain up front: the configuration that takes it
+        // must drop it even when it fails before creating a swapchain, since the
+        // caller may free the chain once this call returns.
+        let create_chain = self.next_swapchain_create_chain.lock().take();
         let functor = khr::swapchain::Device::new(&self.instance.raw, &device.shared.raw);
 
         let old_swapchain = provided_old_swapchain
@@ -389,7 +393,6 @@ impl Surface for NativeSurface {
             info = info.push_next(&mut scaling_info);
         }
 
-        let create_chain = self.next_swapchain_create_chain.lock().take();
         if let Some(chain) = create_chain {
             // SAFETY: The contract on `Surface::set_next_swapchain_create_chain()` keeps
             // the chain valid and unaliased until this swapchain creation returns.
@@ -1151,16 +1154,17 @@ mod tests {
     use super::*;
 
     fn caps(min: (u32, u32), max: (u32, u32)) -> vk::SurfacePresentScalingCapabilitiesEXT<'static> {
-        let mut caps = vk::SurfacePresentScalingCapabilitiesEXT::default();
-        caps.min_scaled_image_extent = vk::Extent2D {
-            width: min.0,
-            height: min.1,
-        };
-        caps.max_scaled_image_extent = vk::Extent2D {
-            width: max.0,
-            height: max.1,
-        };
-        caps
+        vk::SurfacePresentScalingCapabilitiesEXT {
+            min_scaled_image_extent: vk::Extent2D {
+                width: min.0,
+                height: min.1,
+            },
+            max_scaled_image_extent: vk::Extent2D {
+                width: max.0,
+                height: max.1,
+            },
+            ..Default::default()
+        }
     }
 
     fn extent(width: u32, height: u32) -> wgt::Extent3d {

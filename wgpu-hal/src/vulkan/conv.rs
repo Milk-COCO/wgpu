@@ -1415,4 +1415,37 @@ mod tests {
                 | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR
         );
     }
+
+    /// `map_surface_scaling_mode` and `map_vk_present_scaling` must stay
+    /// mutually inverse so that a mode reported in the surface capabilities is
+    /// exactly the one the swapchain is created with.
+    #[test]
+    fn present_scaling_round_trip() {
+        for mode in [
+            wgt::SurfaceScalingMode::Stretch,
+            wgt::SurfaceScalingMode::AspectRatio,
+            wgt::SurfaceScalingMode::OneToOne,
+        ] {
+            let flags = map_surface_scaling_mode(mode).unwrap();
+            assert_eq!(map_vk_present_scaling(flags), vec![mode]);
+        }
+    }
+
+    /// `Auto` is a request, never a reported capability or a Vulkan flag.
+    #[test]
+    fn auto_is_not_a_present_scaling_flag() {
+        assert!(map_surface_scaling_mode(wgt::SurfaceScalingMode::Auto).is_none());
+        let all = vk::PresentScalingFlagsEXT::STRETCH
+            | vk::PresentScalingFlagsEXT::ASPECT_RATIO_STRETCH
+            | vk::PresentScalingFlagsEXT::ONE_TO_ONE;
+        let modes = map_vk_present_scaling(all);
+        assert!(!modes.contains(&wgt::SurfaceScalingMode::Auto));
+        assert_eq!(modes.len(), 3);
+    }
+
+    /// No supported scaling flags means no scaling modes, not a default.
+    #[test]
+    fn no_present_scaling_flags_reports_no_modes() {
+        assert!(map_vk_present_scaling(vk::PresentScalingFlagsEXT::empty()).is_empty());
+    }
 }

@@ -719,6 +719,9 @@ pub trait Surface: WasmNotSendSync {
     /// cannot apply; [`wgt::SurfaceScalingMode::Auto`] may fall back to the
     /// platform default instead.
     ///
+    /// A failed configuration may leave the surface unconfigured: some backends
+    /// release the previous swapchain before they can report the failure.
+    ///
     /// # Safety
     ///
     /// - All GPU work using `self` must have been completed.
