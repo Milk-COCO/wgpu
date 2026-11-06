@@ -1391,15 +1391,16 @@ fn map_surface_scaling_mode(
         wgt::SurfaceScalingMode::Auto | wgt::SurfaceScalingMode::Stretch => {
             Dxgi::DXGI_SCALING_STRETCH
         }
-        wgt::SurfaceScalingMode::AspectRatio if !composition => {
-            Dxgi::DXGI_SCALING_ASPECT_RATIO_STRETCH
-        }
+        // DXGI documents `DXGI_SCALING_ASPECT_RATIO_STRETCH` as behaving like
+        // `DXGI_SCALING_STRETCH` for Win32 window swap chains, and composition
+        // swap chains reject it, so no target can honor the mode. Mapping it to
+        // `STRETCH` lets `configure` report it as clamped instead of creating a
+        // swapchain with a different behavior than requested.
+        wgt::SurfaceScalingMode::AspectRatio => Dxgi::DXGI_SCALING_STRETCH,
         wgt::SurfaceScalingMode::OneToOne if !composition => Dxgi::DXGI_SCALING_NONE,
         // Unreachable via `wgpu-core`, which validates against
         // `SurfaceCapabilities::scaling_modes`; clamp for composition targets.
-        wgt::SurfaceScalingMode::AspectRatio | wgt::SurfaceScalingMode::OneToOne => {
-            Dxgi::DXGI_SCALING_STRETCH
-        }
+        wgt::SurfaceScalingMode::OneToOne => Dxgi::DXGI_SCALING_STRETCH,
     }
 }
 
@@ -1439,14 +1440,16 @@ impl crate::Surface for Surface {
 
         let wanted_scaling = map_surface_scaling_mode(config.scaling_mode, &self.target);
         // Composition swap chains only accept `DXGI_SCALING_STRETCH`, so an
-        // explicit mode that would have to be clamped is reported rather than
-        // silently replaced by stretching.
+        // `wanted_scaling` is `STRETCH` for an explicit mode whenever the
+        // target cannot honor it (composition targets for both modes, Win32
+        // window swap chains for `AspectRatio`), so a clamped request is
+        // reported rather than silently replaced by stretching.
         if config.scaling_mode != wgt::SurfaceScalingMode::Auto
             && config.scaling_mode != wgt::SurfaceScalingMode::Stretch
             && wanted_scaling == Dxgi::DXGI_SCALING_STRETCH
         {
             log::error!(
-                "surface scaling {:?} is not available for this surface target",
+                "surface scaling {:?} is not available on this surface",
                 config.scaling_mode
             );
             return Err(crate::SurfaceError::UnsupportedScalingMode);
@@ -1559,12 +1562,15 @@ impl crate::Surface for Surface {
                             effective_scaling = scaling;
                             break swap_chain;
                         }
-                        // Not every driver accepts every scaling value; fall
-                        // back to stretching rather than failing to configure.
+                        // Retry with stretching: whether this succeeds tells us
+                        // whether the scaling value was the reason the creation
+                        // failed, which is what the explicit-mode check below
+                        // reports on.
                         Err(err) if scaling != Dxgi::DXGI_SCALING_STRETCH => {
                             log::warn!(
                                 "swapchain creation with {scaling:?} failed ({err}), \
-                                 falling back to DXGI_SCALING_STRETCH"
+                                 retrying with DXGI_SCALING_STRETCH to check whether the \
+                                 scaling mode was rejected"
                             );
                             scaling = Dxgi::DXGI_SCALING_STRETCH;
                         }

@@ -107,10 +107,10 @@ impl NativeSurface {
     /// Returns the scaling modes supported for every one of `present_modes`, in
     /// preference order.
     ///
-    /// Intersecting the per-present-mode results keeps
-    /// `SurfaceCapabilities::scaling_modes` a guarantee: a configuration that
-    /// passes `wgpu-core` validation can be honored for any present mode the
-    /// surface advertises.
+    /// Intersecting the per-present-mode results makes the reported list a
+    /// best-effort bound rather than a guarantee: it is valid for any present
+    /// mode the surface advertises, but the swapchain can still be refused on
+    /// the scaled extent range.
     fn surface_scaling_modes(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -339,8 +339,9 @@ impl Surface for NativeSurface {
         // requested scaling mode is legal for this surface *and* present mode
         // (VUID-VkSwapchainPresentScalingCreateInfoKHR-scalingBehavior-07770),
         // and the image extent is within the scaled extent range
-        // (VUID-VkSwapchainCreateInfoKHR-pNext-07782). Otherwise the structure
-        // is left out and the platform default applies.
+        // (VUID-VkSwapchainCreateInfoKHR-pNext-07782). An explicit mode that
+        // fails either check is reported; only `Auto` leaves the structure out
+        // and lets the platform default apply.
         let mut scaling_info = vk::SwapchainPresentScalingCreateInfoEXT::default();
         let mut use_scaling_info = false;
         if let Some(scaling) = conv::map_surface_scaling_mode(config.scaling_mode) {
@@ -478,10 +479,17 @@ impl Surface for NativeSurface {
 
 /// Whether `extent` is within the range of scaled image extents a surface
 /// supports for the requested present scaling mode.
+///
+/// `(0xFFFFFFFF, 0xFFFFFFFF)` is the spec's "the surface size follows the
+/// swapchain extent" value, so every extent is valid.
 fn extent_within_scaled_range(
     caps: vk::SurfacePresentScalingCapabilitiesEXT<'_>,
     extent: wgt::Extent3d,
 ) -> bool {
+    let unbounded = |e: vk::Extent2D| e.width == u32::MAX && e.height == u32::MAX;
+    if unbounded(caps.min_scaled_image_extent) || unbounded(caps.max_scaled_image_extent) {
+        return true;
+    }
     caps.min_scaled_image_extent.width <= extent.width
         && extent.width <= caps.max_scaled_image_extent.width
         && caps.min_scaled_image_extent.height <= extent.height
