@@ -193,12 +193,12 @@ pub enum SurfaceScalingMode {
     /// The unused areas are centered where the platform allows wgpu to ask for
     /// it; otherwise the platform's own placement applies.
     ///
-    /// * **Maps to**: `DXGI_SCALING_ASPECT_RATIO_STRETCH`,
-    ///   [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`],
+    /// * **Maps to**: [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`],
     ///   `kCAGravityResizeAspect`.
-    /// * **Not reported on**: D3D12, where `DXGI_SCALING_ASPECT_RATIO_STRETCH`
+    /// * **Not reported on**: D3D12 and the web. `DXGI_SCALING_ASPECT_RATIO_STRETCH`
     ///   is documented to behave like `DXGI_SCALING_STRETCH` for Win32 window
-    ///   swap chains, so this may be absent from
+    ///   swap chains and composition swap chains reject it, so no D3D12 target
+    ///   can honor it. It may therefore be absent from
     ///   [`SurfaceCapabilities::scaling_modes`] on Windows.
     ///
     /// [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
@@ -620,12 +620,12 @@ pub struct SurfaceCapabilities {
     /// [`present_modes`](Self::present_modes).
     ///
     /// The list is what wgpu expects the platform to accept, not a guarantee:
-    /// it is exact where the backend can query it (Vulkan, per present mode)
-    /// and inferred from the platform's documented rules where it cannot
-    /// (D3D12, Metal, GLES and the web). A driver can still reject a listed mode
-    /// when the surface is configured; an explicit mode then fails with a
-    /// validation error, while [`SurfaceScalingMode::Auto`] falls back to the
-    /// platform default.
+    /// it reflects the backend's query where one exists (Vulkan, per present
+    /// mode, intersected across present modes) and the platform's documented
+    /// rules where it does not (D3D12, Metal, GLES and the web). A driver can
+    /// still reject a listed mode when the surface is configured; an explicit
+    /// mode then fails with a validation error, while
+    /// [`SurfaceScalingMode::Auto`] falls back to the platform default.
     ///
     /// May be empty, which means the platform does not let wgpu control how a
     /// swapchain image is mapped onto a surface with a different extent (for
@@ -956,7 +956,8 @@ pub struct SurfaceConfiguration<V> {
     ///
     /// [`SurfaceScalingMode::Auto`] (the default) prefers
     /// [`SurfaceScalingMode::Stretch`], falling back to the platform default on
-    /// platforms that cannot control scaling. Any other value must be listed in
+    /// platforms that cannot control scaling, and also when the platform refuses
+    /// the mode `Auto` resolved to. Any other value must be listed in
     /// [`SurfaceCapabilities::scaling_modes`], and configuring fails with a
     /// validation error if the platform refuses it.
     #[cfg_attr(feature = "serde", serde(default))]
