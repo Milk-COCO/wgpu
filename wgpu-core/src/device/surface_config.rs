@@ -429,20 +429,28 @@ mod surface_configuration_tests {
     }
 
     /// Without `Stretch`, `SurfaceScalingMode::Auto` takes the first supported
-    /// mode.
+    /// mode, regardless of the order of the capability list.
     #[test]
     fn auto_scaling_takes_first_supported_mode() {
-        let mut caps = caps(vec![format_caps(
-            wgt::TextureFormat::Bgra8UnormSrgb,
-            wgt::SurfaceColorSpaces::SRGB,
-        )]);
-        caps.scaling_modes = vec![wgt::SurfaceScalingMode::AspectRatio];
-        let mut config = config(
-            wgt::TextureFormat::Bgra8UnormSrgb,
-            wgt::SurfaceColorSpace::Auto,
-        );
-        validate_surface_configuration(&mut config, &caps, 4096).unwrap();
-        assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::AspectRatio);
+        for scaling_modes in [
+            vec![wgt::SurfaceScalingMode::AspectRatio],
+            vec![
+                wgt::SurfaceScalingMode::OneToOne,
+                wgt::SurfaceScalingMode::AspectRatio,
+            ],
+        ] {
+            let mut caps = caps(vec![format_caps(
+                wgt::TextureFormat::Bgra8UnormSrgb,
+                wgt::SurfaceColorSpaces::SRGB,
+            )]);
+            caps.scaling_modes = scaling_modes;
+            let mut config = config(
+                wgt::TextureFormat::Bgra8UnormSrgb,
+                wgt::SurfaceColorSpace::Auto,
+            );
+            validate_surface_configuration(&mut config, &caps, 4096).unwrap();
+            assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::AspectRatio);
+        }
     }
 
     /// Without `Stretch` or `AspectRatio`, `SurfaceScalingMode::Auto` falls
@@ -504,7 +512,13 @@ mod surface_configuration_tests {
     /// including when the backend cannot control scaling at all.
     #[test]
     fn explicit_unsupported_scaling_mode_errors() {
-        for scaling_modes in [vec![wgt::SurfaceScalingMode::Stretch], Vec::new()] {
+        for (scaling_modes, available) in [
+            (
+                vec![wgt::SurfaceScalingMode::Stretch],
+                vec![wgt::SurfaceScalingMode::Stretch],
+            ),
+            (Vec::new(), Vec::new()),
+        ] {
             let mut caps = caps(vec![format_caps(
                 wgt::TextureFormat::Bgra8UnormSrgb,
                 wgt::SurfaceColorSpaces::SRGB,
@@ -520,8 +534,8 @@ mod surface_configuration_tests {
                 err,
                 ConfigureSurfaceError::UnsupportedScalingMode {
                     requested: wgt::SurfaceScalingMode::OneToOne,
-                    ..
-                }
+                    available: ref got,
+                } if *got == available
             ));
         }
     }

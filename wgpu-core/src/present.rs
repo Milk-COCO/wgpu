@@ -114,7 +114,7 @@ pub enum ConfigureSurfaceError {
         available: Vec<wgt::CompositeAlphaMode>,
     },
     #[error(
-        "The requested scaling mode {requested:?} is not supported; supported modes: {available:?}"
+        "The requested scaling mode {requested:?} could not be applied; supported modes: {available:?}"
     )]
     UnsupportedScalingMode {
         requested: wgt::SurfaceScalingMode,
