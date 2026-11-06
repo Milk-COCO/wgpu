@@ -1024,12 +1024,16 @@ impl Surface {
             user_callbacks = self.unconfigure_inner(&mut presentation);
 
             let surface_raw = self.raw(device.backend()).unwrap();
+            // The mode `Auto` resolved to, kept for the error below even when the
+            // fallback retry resets the configuration to `Auto`.
+            let resolved_scaling_mode = hal_config.scaling_mode;
             let mut configured = unsafe { surface_raw.configure(device.raw(), &hal_config) };
             // `Auto` promises a fallback to the platform default, so a backend
             // that refuses the mode `Auto` resolved to must still be given the
-            // chance to fall back.
+            // chance to fall back. Re-sending an unresolved `Auto` cannot help.
             if matches!(configured, Err(hal::SurfaceError::UnsupportedScalingMode))
                 && config.scaling_mode == wgt::SurfaceScalingMode::Auto
+                && resolved_scaling_mode != wgt::SurfaceScalingMode::Auto
             {
                 hal_config.scaling_mode = wgt::SurfaceScalingMode::Auto;
                 configured = unsafe { surface_raw.configure(device.raw(), &hal_config) };
@@ -1049,7 +1053,7 @@ impl Surface {
                     | hal::SurfaceError::Occluded
                     | hal::SurfaceError::Timeout => E::InvalidSurface,
                     hal::SurfaceError::UnsupportedScalingMode => E::UnsupportedScalingMode {
-                        requested: hal_config.scaling_mode,
+                        requested: resolved_scaling_mode,
                         available: caps.scaling_modes.clone(),
                     },
                     hal::SurfaceError::Device(error) => E::Device(device.handle_hal_error(error)),

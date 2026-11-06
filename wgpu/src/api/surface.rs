@@ -106,6 +106,10 @@ impl Surface<'_> {
     /// If the surface is already configured, this will wait for the GPU to come idle
     /// before recreating the swapchain to prevent race conditions.
     ///
+    /// A failed configuration leaves the surface unconfigured, so a later
+    /// [`Surface::get_current_texture`] returns an error until `configure`
+    /// succeeds.
+    ///
     /// # Validation Errors
     /// - Submissions that happen _during_ the configure may cause the
     ///   internal wait-for-idle to fail, raising a validation error.
