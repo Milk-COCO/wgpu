@@ -2827,9 +2827,10 @@ pub struct SurfaceConfiguration {
     /// How a swapchain image is mapped onto a surface of a different extent.
     ///
     /// `wgpu-core` resolves `Auto` to one of
-    /// `SurfaceCapabilities::scaling_modes` before configuring the surface, so
-    /// the only value a backend can receive that it did not advertise is
-    /// `Auto`, and only when `scaling_modes` is empty.
+    /// `SurfaceCapabilities::scaling_modes` before configuring the surface. A
+    /// backend can also receive `Auto` after `wgpu-core` retries with the
+    /// platform default when it refused the resolved mode, and it can receive
+    /// `Auto` even when `scaling_modes` is non-empty.
     pub scaling_mode: wgt::SurfaceScalingMode,
     /// Format of the surface textures.
     pub format: wgt::TextureFormat,

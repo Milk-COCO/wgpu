@@ -352,6 +352,10 @@ impl crate::Surface for Surface {
         device: &super::Device,
         config: &crate::SurfaceConfiguration,
     ) -> Result<(), crate::SurfaceError> {
+        if config.scaling_mode != wgt::SurfaceScalingMode::Auto {
+            return Err(crate::SurfaceError::UnsupportedScalingMode);
+        }
+
         match self.canvas {
             Canvas::Canvas(ref canvas) => {
                 canvas.set_width(config.extent.width);

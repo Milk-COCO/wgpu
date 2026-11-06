@@ -1387,7 +1387,8 @@ fn map_surface_scaling_mode(
             | SurfaceTarget::SwapChainPanel(_)
     );
     match mode {
-        // `Auto` only reaches a backend that reported no scaling modes.
+        // Stretching is also what `Auto` falls back to when `wgpu-core` retries
+        // after a refused scaling mode.
         wgt::SurfaceScalingMode::Auto | wgt::SurfaceScalingMode::Stretch => {
             Dxgi::DXGI_SCALING_STRETCH
         }
@@ -1588,7 +1589,7 @@ impl crate::Surface for Surface {
                     && config.scaling_mode != wgt::SurfaceScalingMode::Auto
                 {
                     log::error!(
-                        "this adapter does not accept surface scaling {:?}",
+                        "this surface does not support scaling mode {:?}",
                         config.scaling_mode
                     );
                     return Err(crate::SurfaceError::UnsupportedScalingMode);

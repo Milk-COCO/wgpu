@@ -595,8 +595,7 @@ pub fn map_surface_scaling_mode(
     }
 }
 
-/// Maps the present scaling flags a surface supports to scaling modes, in
-/// preference order.
+/// Maps the present scaling flags a surface supports to scaling modes.
 pub fn map_vk_present_scaling(flags: vk::PresentScalingFlagsEXT) -> Vec<wgt::SurfaceScalingMode> {
     let mut modes = Vec::new();
     if flags.contains(vk::PresentScalingFlagsEXT::STRETCH) {

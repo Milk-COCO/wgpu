@@ -104,13 +104,11 @@ impl NativeSurface {
         }
     }
 
-    /// Returns the scaling modes supported for every one of `present_modes`, in
-    /// preference order.
+    /// Returns the scaling modes supported for the listed `present_modes`.
     ///
-    /// Intersecting the per-present-mode results makes the reported list a
-    /// best-effort bound rather than a guarantee: it is valid for any present
-    /// mode the surface advertises, but the swapchain can still be refused on
-    /// the scaled extent range.
+    /// The result is the intersection of the per-present-mode queries, so it is
+    /// valid for any of them, but the swapchain can still be refused on the
+    /// scaled extent range.
     fn surface_scaling_modes(
         &self,
         physical_device: vk::PhysicalDevice,
@@ -377,9 +375,10 @@ impl Surface for NativeSurface {
                 }
                 use_scaling_info = true;
             } else {
-                // Only `Auto` may fall back to the platform default, and it never
-                // reaches this block.
-                log::error!(
+                // `Auto` never reaches this block, and `wgpu-core` retries it
+                // with the platform default when this mode is refused, so this
+                // is only a diagnostic for the explicit-mode error.
+                log::debug!(
                     "this surface does not support present scaling {:?}",
                     config.scaling_mode
                 );
@@ -481,19 +480,17 @@ impl Surface for NativeSurface {
 /// supports for the requested present scaling mode.
 ///
 /// `(0xFFFFFFFF, 0xFFFFFFFF)` is the spec's "the surface size follows the
-/// swapchain extent" value, so every extent is valid.
+/// swapchain extent" value, so that end of the range does not constrain the
+/// extent.
 fn extent_within_scaled_range(
     caps: vk::SurfacePresentScalingCapabilitiesEXT<'_>,
     extent: wgt::Extent3d,
 ) -> bool {
     let unbounded = |e: vk::Extent2D| e.width == u32::MAX && e.height == u32::MAX;
-    if unbounded(caps.min_scaled_image_extent) || unbounded(caps.max_scaled_image_extent) {
-        return true;
-    }
-    caps.min_scaled_image_extent.width <= extent.width
-        && extent.width <= caps.max_scaled_image_extent.width
-        && caps.min_scaled_image_extent.height <= extent.height
-        && extent.height <= caps.max_scaled_image_extent.height
+    let min = caps.min_scaled_image_extent;
+    let max = caps.max_scaled_image_extent;
+    (unbounded(min) || (min.width <= extent.width && min.height <= extent.height))
+        && (unbounded(max) || (extent.width <= max.width && extent.height <= max.height))
 }
 
 pub(crate) struct NativeSwapchain {
@@ -1146,5 +1143,65 @@ impl<'a> SwapchainSubmissionSemaphoreGuard for NativeSwapchainSubmissionSemaphor
         self.present_semaphores_guard
             .get_submit_signal_semaphore(device)
             .map(SemaphoreType::Binary)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn caps(min: (u32, u32), max: (u32, u32)) -> vk::SurfacePresentScalingCapabilitiesEXT<'static> {
+        let mut caps = vk::SurfacePresentScalingCapabilitiesEXT::default();
+        caps.min_scaled_image_extent = vk::Extent2D {
+            width: min.0,
+            height: min.1,
+        };
+        caps.max_scaled_image_extent = vk::Extent2D {
+            width: max.0,
+            height: max.1,
+        };
+        caps
+    }
+
+    fn extent(width: u32, height: u32) -> wgt::Extent3d {
+        wgt::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        }
+    }
+
+    #[test]
+    fn unbounded_scaled_range_accepts_every_extent() {
+        let unbounded = (u32::MAX, u32::MAX);
+        let caps = caps(unbounded, unbounded);
+        assert!(extent_within_scaled_range(caps, extent(1, 1)));
+        assert!(extent_within_scaled_range(caps, extent(800, 600)));
+        assert!(extent_within_scaled_range(
+            caps,
+            extent(u32::MAX - 1, u32::MAX - 1)
+        ));
+    }
+
+    #[test]
+    fn unbounded_min_keeps_the_max_bound() {
+        let caps = caps((u32::MAX, u32::MAX), (800, 600));
+        assert!(extent_within_scaled_range(caps, extent(800, 600)));
+        assert!(!extent_within_scaled_range(caps, extent(801, 600)));
+    }
+
+    #[test]
+    fn unbounded_max_keeps_the_min_bound() {
+        let caps = caps((100, 100), (u32::MAX, u32::MAX));
+        assert!(extent_within_scaled_range(caps, extent(100, 100)));
+        assert!(!extent_within_scaled_range(caps, extent(99, 100)));
+    }
+
+    #[test]
+    fn bounded_scaled_range_respects_both_bounds() {
+        let caps = caps((100, 50), (800, 600));
+        assert!(extent_within_scaled_range(caps, extent(400, 300)));
+        assert!(!extent_within_scaled_range(caps, extent(99, 300)));
+        assert!(!extent_within_scaled_range(caps, extent(400, 601)));
     }
 }
