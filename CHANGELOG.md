@@ -171,6 +171,14 @@ By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
 
 - `SurfaceConfiguration::scaling_mode` can now select `DXGI_SCALING_NONE` (`SurfaceScalingMode::OneToOne`) for windowed presentation, so the window displays the swap chain image without resampling it. Previously the only option was `DXGI_SCALING_STRETCH`. By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
 
+#### Metal
+
+- `SurfaceConfiguration::scaling_mode` can now select `SurfaceScalingMode::AspectRatio`, which maps to `kCAGravityResizeAspect` so the drawable keeps its aspect ratio instead of being stretched. By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
+
+#### Vulkan
+
+- On drivers that expose the surface and swapchain maintenance extensions, `SurfaceConfiguration::scaling_mode` can now select `SurfaceScalingMode::Stretch`, `AspectRatio` and `OneToOne`, bypassing the driver's own choice for how the swapchain image is mapped onto the window. Drivers without them keep the platform default. By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
+
 #### Naga
 
 - Add `@builtin(hit_barycentrics)`, a `vec2<f32>` readable in `@any_hit` and `@closest_hit` ray tracing pipeline shaders, holding two of the barycentric coordinates of the hit point on the triangle (the third is `1.0 - x - y`). Currently only supported with the SPIR-V backend. By @JMS55 in [#10193](https://github.com/gfx-rs/wgpu/pull/10193).

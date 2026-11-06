@@ -149,8 +149,9 @@ pub enum CompositeAlphaMode {
 /// disagree.
 ///
 /// The modes a surface can apply are listed in
-/// [`SurfaceCapabilities::scaling_modes`]; choosing a mode that is not listed
-/// is a validation error. That list is wgpu's best understanding of the
+/// [`SurfaceCapabilities::scaling_modes`]; choosing an explicit mode that is not
+/// listed is a validation error, while [`Auto`](Self::Auto) is always accepted.
+/// That list is wgpu's best understanding of the
 /// platform rather than a guarantee, and may be empty, which means the platform
 /// cannot control scaling at all and whatever the compositor does applies. A
 /// mode that is listed but that the platform refuses anyway is also a
@@ -207,7 +208,8 @@ pub enum SurfaceScalingMode {
     /// exactly one surface pixel.
     ///
     /// Where the image lands in the surface is up to the platform: D3D12
-    /// documents the top-left corner, and Vulkan uses the native gravity.
+    /// aligns it to the top-left corner (the top-right for `WS_EX_LAYOUTRTL`
+    /// windows), and Vulkan uses the native gravity.
     ///
     /// * **Maps to**: `DXGI_SCALING_NONE`, [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`].
     /// * **Not reported on**: Metal, GLES and the web, or D3D12 composition
@@ -895,18 +897,20 @@ pub struct SurfaceConfiguration<V> {
     /// If this is not the same size as the underlying surface (e.g. if it is
     /// set once, and the window is later resized), the mapping from the swap
     /// chain image to the surface is governed by
-    /// [`scaling_mode`](Self::scaling_mode). Only the modes listed in
-    /// [`SurfaceCapabilities::scaling_modes`] are available; platforms that
-    /// cannot control scaling are listed there as an empty list.
+    /// [`scaling_mode`](Self::scaling_mode). Only the explicit modes listed in
+    /// [`SurfaceCapabilities::scaling_modes`] are available; `Auto` is always
+    /// accepted, and platforms that cannot control scaling are listed there as
+    /// an empty list.
     pub width: u32,
     /// Height of the swap chain. Must be nonzero.
     ///
     /// If this is not the same size as the underlying surface (e.g. if it is
     /// set once, and the window is later resized), the mapping from the swap
     /// chain image to the surface is governed by
-    /// [`scaling_mode`](Self::scaling_mode). Only the modes listed in
-    /// [`SurfaceCapabilities::scaling_modes`] are available; platforms that
-    /// cannot control scaling are listed there as an empty list.
+    /// [`scaling_mode`](Self::scaling_mode). Only the explicit modes listed in
+    /// [`SurfaceCapabilities::scaling_modes`] are available; `Auto` is always
+    /// accepted, and platforms that cannot control scaling are listed there as
+    /// an empty list.
     pub height: u32,
     /// Presentation mode of the swap chain. Fifo is the only mode guaranteed to be supported.
     /// `FifoRelaxed`, `Immediate`, and `Mailbox` will crash if unsupported, while `AutoVsync` and

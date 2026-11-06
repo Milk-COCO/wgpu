@@ -106,9 +106,11 @@ impl Surface<'_> {
     /// If the surface is already configured, this will wait for the GPU to come idle
     /// before recreating the swapchain to prevent race conditions.
     ///
-    /// A failed configuration leaves the surface unconfigured, so a later
+    /// If the platform cannot create a swapchain for the configuration, the
+    /// surface is left unconfigured, so a later
     /// [`Surface::get_current_texture`] returns an error until `configure`
-    /// succeeds.
+    /// succeeds. Validation errors are reported before the previous
+    /// configuration is replaced.
     ///
     /// # Validation Errors
     /// - Submissions that happen _during_ the configure may cause the
@@ -120,7 +122,9 @@ impl Surface<'_> {
     /// - The requested color space is unsupported for the requested format
     ///   (see [`SurfaceCapabilities::format_capabilities`]).
     /// - The requested scaling mode is unsupported on the surface
-    ///   (see [`SurfaceCapabilities::scaling_modes`]).
+    ///   (see [`SurfaceCapabilities::scaling_modes`]). On the web backend this
+    ///   is reported as a lost surface instead of a panic, since there is no
+    ///   `catch_unwind` there to recover an abort.
     /// - `config.width` or `config.height` is zero.
     pub fn configure(&self, device: &Device, config: &SurfaceConfiguration) {
         self.inner.configure(&device.inner, config);
