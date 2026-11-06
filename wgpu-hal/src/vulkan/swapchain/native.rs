@@ -269,7 +269,15 @@ impl Surface for NativeSurface {
                 .flat_map(conv::map_vk_present_mode)
                 .collect(),
             composite_alpha_modes: conv::map_vk_composite_alpha(caps.supported_composite_alpha),
-            scaling_modes: self.surface_scaling_modes(adapter.raw, &raw_present_modes),
+            // Only report modes the device half of the extension can apply.
+            // `create_swapchain` needs `swapchainMaintenance1`; a driver that
+            // has `surfaceMaintenance1` without it would otherwise pass
+            // `wgpu-core` validation and then silently use the platform default.
+            scaling_modes: if adapter.private_caps.swapchain_maintenance1 {
+                self.surface_scaling_modes(adapter.raw, &raw_present_modes)
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -350,6 +358,22 @@ impl Surface for NativeSurface {
             });
             if supported {
                 scaling_info = scaling_info.scaling_behavior(scaling);
+                // `DXGI_SCALING_ASPECT_RATIO_STRETCH` and `kCAGravityResizeAspect`
+                // center the image, so ask Vulkan for the same instead of the
+                // platform's native gravity. If it isn't available, gravity
+                // stays `0` (VUID-VkSwapchainPresentScalingCreateInfoKHR-presentGravityX-07765
+                // requires both axes to be zero or both non-zero).
+                let centered = vk::PresentGravityFlagsEXT::CENTERED;
+                if scaling == vk::PresentScalingFlagsEXT::ASPECT_RATIO_STRETCH
+                    && caps.is_some_and(|caps| {
+                        caps.supported_present_gravity_x.contains(centered)
+                            && caps.supported_present_gravity_y.contains(centered)
+                    })
+                {
+                    scaling_info = scaling_info
+                        .present_gravity_x(centered)
+                        .present_gravity_y(centered);
+                }
                 use_scaling_info = true;
             } else {
                 log::warn!(

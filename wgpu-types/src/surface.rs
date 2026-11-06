@@ -189,6 +189,9 @@ pub enum SurfaceScalingMode {
     /// ratio, leaving unused areas of the surface uncovered ("letterbox" or
     /// "pillarbox").
     ///
+    /// The unused areas are centered where the platform allows wgpu to ask for
+    /// it; otherwise the platform's own placement applies.
+    ///
     /// * **Maps to**: `DXGI_SCALING_ASPECT_RATIO_STRETCH`,
     ///   [`VK_SURFACE_PRESENT_SCALING_ASPECT_RATIO_BIT_EXT`],
     ///   `kCAGravityResizeAspect`.
@@ -201,6 +204,9 @@ pub enum SurfaceScalingMode {
     AspectRatio = 2,
     /// The image is neither scaled nor resampled: one image pixel covers
     /// exactly one surface pixel.
+    ///
+    /// Where the image lands in the surface is up to the platform: D3D12
+    /// documents the top-left corner, and Vulkan uses the native gravity.
     ///
     /// * **Maps to**: `DXGI_SCALING_NONE`, [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`].
     /// * **Not reported on**: Metal, GLES and the web, so it may be absent from
