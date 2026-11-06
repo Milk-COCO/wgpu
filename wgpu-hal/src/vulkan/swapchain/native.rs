@@ -376,9 +376,13 @@ impl Surface for NativeSurface {
                 }
                 use_scaling_info = true;
             } else {
-                log::warn!(
-                    "Present scaling {scaling:?} is not supported here; the platform default applies"
+                // Only `Auto` may fall back to the platform default, and it never
+                // reaches this block.
+                log::error!(
+                    "this surface does not support present scaling {:?}",
+                    config.scaling_mode
                 );
+                return Err(crate::SurfaceError::UnsupportedScalingMode);
             }
         }
         if use_scaling_info {

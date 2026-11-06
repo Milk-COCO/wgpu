@@ -288,6 +288,12 @@ impl Surface {
                         return Err(device.handle_hal_error(err).into());
                     }
                     hal::SurfaceError::Outdated => Status::Outdated,
+                    // Only returned by `configure`; a backend should not report
+                    // it here.
+                    hal::SurfaceError::UnsupportedScalingMode => {
+                        log::error!("acquire error: unsupported surface scaling mode");
+                        Status::Lost
+                    }
                     hal::SurfaceError::Other(msg) => {
                         log::error!("acquire error: {msg}");
                         Status::Lost
@@ -398,6 +404,12 @@ impl Queue {
                     Err(SurfaceError::from(device.handle_hal_error(err)))
                 }
                 hal::SurfaceError::Outdated => Ok(Status::Outdated),
+                // Only returned by `configure`; a backend should not report it
+                // here.
+                hal::SurfaceError::UnsupportedScalingMode => {
+                    log::error!("present error: unsupported surface scaling mode");
+                    Err(SurfaceError::Invalid)
+                }
                 hal::SurfaceError::Other(msg) => {
                     log::error!("present error: {msg}");
                     Err(SurfaceError::Invalid)

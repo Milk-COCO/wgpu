@@ -573,6 +573,8 @@ pub enum SurfaceError {
     Timeout,
     #[error("The window is occluded (e.g. minimized or behind another window). Try again once the window is no longer occluded.")]
     Occluded,
+    #[error("The adapter does not support the requested surface scaling mode")]
+    UnsupportedScalingMode,
     #[error(transparent)]
     Device(#[from] DeviceError),
     #[error("Other reason: {0}")]
@@ -711,6 +713,11 @@ pub trait Surface: WasmNotSendSync {
     type A: Api;
 
     /// Configure `self` to use `device`.
+    ///
+    /// Returns [`SurfaceError::UnsupportedScalingMode`] when
+    /// [`SurfaceConfiguration::scaling_mode`] is an explicit mode this backend
+    /// cannot apply; [`wgt::SurfaceScalingMode::Auto`] may fall back to the
+    /// platform default instead.
     ///
     /// # Safety
     ///
@@ -2254,6 +2261,12 @@ pub struct SurfaceCapabilities {
 
     /// List of supported scaling modes, in preference order: the first element
     /// is what `wgt::SurfaceScalingMode::Auto` resolves to.
+    ///
+    /// Backends that cannot query this should report what the platform
+    /// documents; a mode listed here may still be rejected when the swapchain is
+    /// created, in which case the backend must return
+    /// [`SurfaceError::UnsupportedScalingMode`] for an explicit mode, or fall
+    /// back to the platform default for `wgt::SurfaceScalingMode::Auto`.
     ///
     /// May be empty, which means this backend cannot control how a swapchain
     /// image is mapped onto a surface of a different extent and will use the

@@ -1379,11 +1379,12 @@ impl crate::Adapter for super::Adapter {
                     wgt::CompositeAlphaMode::PreMultiplied,
                 ],
             },
-            // `CreateSwapChainForComposition*` only accept
-            // `DXGI_SCALING_STRETCH`, and DXGI documents
-            // `DXGI_SCALING_ASPECT_RATIO_STRETCH` as behaving like
-            // `DXGI_SCALING_STRETCH` for Win32 window swap chains, so aspect
-            // ratio scaling is not something D3D12 can offer.
+            // D3D12 can only letterbox through `CreateSwapChainForCoreWindow`
+            // (UWP) swap chains: `DXGI_SCALING_ASPECT_RATIO_STRETCH` behaves
+            // like `DXGI_SCALING_STRETCH` for Win32 window swap chains, and
+            // composition swap chains require `DXGI_SCALING_STRETCH`. wgpu
+            // never creates CoreWindow swap chains, so `AspectRatio` is not
+            // reported for any target.
             scaling_modes: match surface.target {
                 SurfaceTarget::WndHandle(_) => vec![
                     wgt::SurfaceScalingMode::Stretch,

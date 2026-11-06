@@ -1038,6 +1038,10 @@ impl Surface {
                     | hal::SurfaceError::Lost
                     | hal::SurfaceError::Occluded
                     | hal::SurfaceError::Timeout => E::InvalidSurface,
+                    hal::SurfaceError::UnsupportedScalingMode => E::UnsupportedScalingMode {
+                        requested: config.scaling_mode,
+                        available: caps.scaling_modes.clone(),
+                    },
                     hal::SurfaceError::Device(error) => E::Device(device.handle_hal_error(error)),
                     hal::SurfaceError::Other(message) => {
                         log::error!("surface configuration failed: {message}");

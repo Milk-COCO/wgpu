@@ -109,7 +109,9 @@ is being resized or when the window's client area and the configured extent disa
 
 `SurfaceScalingMode::Auto`, the default, prefers `Stretch`; the new
 `SurfaceCapabilities::scaling_modes` lists the modes a surface can apply, and may be empty on
-platforms that do not let wgpu control scaling.
+platforms that do not let wgpu control scaling. That list is what wgpu expects the platform to
+accept rather than a guarantee: an explicit mode that the driver refuses fails
+`Surface::configure` with a validation error, while `Auto` falls back to the platform default.
 
 ```diff
  let config = wgpu::SurfaceConfiguration {
@@ -119,7 +121,8 @@ platforms that do not let wgpu control scaling.
 ```
 
 `wgpu_hal::SurfaceConfiguration` and `wgpu_hal::SurfaceCapabilities` gained the corresponding
-fields. This is a breaking change for out-of-tree `wgpu_hal` backends.
+fields, and `wgpu_hal::SurfaceError` gained an `UnsupportedScalingMode` variant. These are
+breaking changes for out-of-tree `wgpu_hal` backends.
 
 By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
 

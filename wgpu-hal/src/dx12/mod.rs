@@ -1438,6 +1438,20 @@ impl crate::Surface for Surface {
         let swap_chain_buffer = (config.maximum_frame_latency + 1).min(16);
 
         let wanted_scaling = map_surface_scaling_mode(config.scaling_mode, &self.target);
+        // Composition swap chains only accept `DXGI_SCALING_STRETCH`, so an
+        // explicit mode that would have to be clamped is reported rather than
+        // silently replaced by stretching.
+        if config.scaling_mode != wgt::SurfaceScalingMode::Auto
+            && config.scaling_mode != wgt::SurfaceScalingMode::Stretch
+            && wanted_scaling == Dxgi::DXGI_SCALING_STRETCH
+        {
+            log::error!(
+                "surface scaling {:?} is not available for this surface target",
+                config.scaling_mode
+            );
+            return Err(crate::SurfaceError::UnsupportedScalingMode);
+        }
+
         // What the swap chain actually ends up with, which differs from
         // `wanted_scaling` if DXGI rejected it and creation was retried.
         let mut effective_scaling = wanted_scaling;
@@ -1560,6 +1574,19 @@ impl crate::Surface for Surface {
                         }
                     }
                 };
+
+                // Reaching here with a different value than requested means DXGI
+                // rejected the requested scaling and the retry above succeeded.
+                // `Auto` may fall back; an explicit mode must not be replaced.
+                if effective_scaling != wanted_scaling
+                    && config.scaling_mode != wgt::SurfaceScalingMode::Auto
+                {
+                    log::error!(
+                        "this adapter does not accept surface scaling {:?}",
+                        config.scaling_mode
+                    );
+                    return Err(crate::SurfaceError::UnsupportedScalingMode);
+                }
 
                 match &self.target {
                     SurfaceTarget::WndHandle(_) | SurfaceTarget::SurfaceHandle(_) => {}
