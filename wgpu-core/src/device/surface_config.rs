@@ -445,6 +445,23 @@ mod surface_configuration_tests {
         assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::AspectRatio);
     }
 
+    /// Without `Stretch` or `AspectRatio`, `SurfaceScalingMode::Auto` falls
+    /// back to `OneToOne`.
+    #[test]
+    fn auto_scaling_falls_back_to_one_to_one() {
+        let mut caps = caps(vec![format_caps(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpaces::SRGB,
+        )]);
+        caps.scaling_modes = vec![wgt::SurfaceScalingMode::OneToOne];
+        let mut config = config(
+            wgt::TextureFormat::Bgra8UnormSrgb,
+            wgt::SurfaceColorSpace::Auto,
+        );
+        validate_surface_configuration(&mut config, &caps, 4096).unwrap();
+        assert_eq!(config.scaling_mode, wgt::SurfaceScalingMode::OneToOne);
+    }
+
     /// An empty `scaling_modes` list means the backend cannot control scaling:
     /// `Auto` is passed through and the platform default applies.
     #[test]
