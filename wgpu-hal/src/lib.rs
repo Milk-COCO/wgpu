@@ -573,7 +573,7 @@ pub enum SurfaceError {
     Timeout,
     #[error("The window is occluded (e.g. minimized or behind another window). Try again once the window is no longer occluded.")]
     Occluded,
-    #[error("The adapter does not support the requested surface scaling mode")]
+    #[error("The surface does not support the requested scaling mode")]
     UnsupportedScalingMode,
     #[error(transparent)]
     Device(#[from] DeviceError),
@@ -2259,8 +2259,11 @@ pub struct SurfaceCapabilities {
     /// Must be at least one.
     pub composite_alpha_modes: Vec<wgt::CompositeAlphaMode>,
 
-    /// List of supported scaling modes, in preference order: the first element
-    /// is what `wgt::SurfaceScalingMode::Auto` resolves to.
+    /// List of supported scaling modes.
+    ///
+    /// `wgt::SurfaceScalingMode::Auto` resolves to the first supported mode in
+    /// the fixed order `Stretch`, `AspectRatio`, `OneToOne`; the order of this
+    /// list is not significant.
     ///
     /// Backends that cannot query this should report what the platform
     /// documents; a mode listed here may still be rejected when the swapchain is

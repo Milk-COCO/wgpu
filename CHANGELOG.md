@@ -121,8 +121,10 @@ accept rather than a guarantee: an explicit mode that the driver refuses fails
 ```
 
 `wgpu_hal::SurfaceConfiguration` and `wgpu_hal::SurfaceCapabilities` gained the corresponding
-fields, and `wgpu_hal::SurfaceError` gained an `UnsupportedScalingMode` variant. These are
-breaking changes for out-of-tree `wgpu_hal` backends.
+fields, and `wgpu_hal::SurfaceError` gained an `UnsupportedScalingMode` variant. `SurfaceError` is
+not `#[non_exhaustive]`, so exhaustive matches on it also need an arm. Backends must now return
+that variant for an explicit scaling mode they cannot apply instead of silently substituting
+another mode. These are breaking changes for out-of-tree `wgpu_hal` backends.
 
 By @Milk-COCO in [#10196](https://github.com/gfx-rs/wgpu/issues/10196).
 

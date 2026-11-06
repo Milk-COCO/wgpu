@@ -210,7 +210,8 @@ pub enum SurfaceScalingMode {
     /// documents the top-left corner, and Vulkan uses the native gravity.
     ///
     /// * **Maps to**: `DXGI_SCALING_NONE`, [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`].
-    /// * **Not reported on**: Metal, GLES and the web, so it may be absent from
+    /// * **Not reported on**: Metal, GLES and the web, or D3D12 composition
+    ///   targets, so it may be absent from
     ///   [`SurfaceCapabilities::scaling_modes`].
     ///
     /// [`VK_SURFACE_PRESENT_SCALING_ONE_TO_ONE_BIT_EXT`]: https://registry.khronos.org/vulkan/specs/latest/man/html/VkSurfacePresentScalingFlagBitsEXT.html
@@ -607,9 +608,13 @@ pub struct SurfaceCapabilities {
     ///
     /// Will return at least one element, [`CompositeAlphaMode::Opaque`] or [`CompositeAlphaMode::Inherit`].
     pub alpha_modes: Vec<CompositeAlphaMode>,
-    /// List of supported scaling modes to use with the given adapter, in
-    /// preference order: the first element is what
-    /// [`SurfaceScalingMode::Auto`] resolves to.
+    /// List of supported scaling modes to use with the given adapter.
+    ///
+    /// [`SurfaceScalingMode::Auto`] resolves to the first supported mode in the
+    /// fixed order [`Stretch`](SurfaceScalingMode::Stretch),
+    /// [`AspectRatio`](SurfaceScalingMode::AspectRatio),
+    /// [`OneToOne`](SurfaceScalingMode::OneToOne); the order of this list is not
+    /// significant.
     ///
     /// Each listed mode applies to every present mode in
     /// [`present_modes`](Self::present_modes).
