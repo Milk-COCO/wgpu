@@ -4412,6 +4412,12 @@ impl dispatch::SurfaceInterface for WebSurface {
     fn configure(&self, device: &dispatch::DispatchDevice, config: &crate::SurfaceConfiguration) {
         let device = device.as_webgpu();
 
+        if config.scaling_mode != wgt::SurfaceScalingMode::Auto {
+            panic!(
+                "The web backend cannot control how a canvas is scaled; only `Auto` is supported"
+            );
+        }
+
         match self.canvas {
             Canvas::Canvas(ref canvas) => {
                 canvas.set_width(config.width);

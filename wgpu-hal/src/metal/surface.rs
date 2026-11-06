@@ -254,6 +254,13 @@ impl crate::Surface for super::Surface {
     ) -> Result<(), crate::SurfaceError> {
         log::debug!("build swapchain {config:?}");
 
+        // There is no gravity that maps one drawable pixel to one surface pixel,
+        // so refuse `OneToOne` before any of the surface state is mutated.
+        if config.scaling_mode == wgt::SurfaceScalingMode::OneToOne {
+            log::error!("the Metal backend does not support one-to-one surface scaling");
+            return Err(crate::SurfaceError::UnsupportedScalingMode);
+        }
+
         let caps = &device.shared.private_texture_format_caps;
         *self.swapchain_format.write() = Some(config.format);
         *self.extent.write() = config.extent;
@@ -343,21 +350,17 @@ impl crate::Surface for super::Surface {
         // `CALayer.contentsGravity` decides how the drawable is mapped onto the
         // layer's bounds when the two sizes differ. `kCAGravityResize`, the
         // default, stretches; `kCAGravityResizeAspect` preserves the aspect
-        // ratio. There is no gravity that maps one drawable pixel to one surface
-        // pixel, so `surface_capabilities` doesn't report `OneToOne` and an
-        // explicit request for it is rejected rather than silently stretched.
+        // ratio. `OneToOne` is rejected at the top of this function.
         let gravity = match config.scaling_mode {
             wgt::SurfaceScalingMode::AspectRatio => {
                 // SAFETY: `kCAGravity*` are immutable Core Animation constants.
                 unsafe { objc2_quartz_core::kCAGravityResizeAspect }
             }
-            wgt::SurfaceScalingMode::Auto | wgt::SurfaceScalingMode::Stretch => {
+            wgt::SurfaceScalingMode::Auto
+            | wgt::SurfaceScalingMode::Stretch
+            | wgt::SurfaceScalingMode::OneToOne => {
                 // SAFETY: as above.
                 unsafe { objc2_quartz_core::kCAGravityResize }
-            }
-            wgt::SurfaceScalingMode::OneToOne => {
-                log::error!("the Metal backend does not support one-to-one surface scaling");
-                return Err(crate::SurfaceError::UnsupportedScalingMode);
             }
         };
         render_layer.setContentsGravity(gravity);
